@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+.git/
+.env
+tests/
+docs/
+samples/
+README.md
+docker-compose.yml
+docker-compose.*.yml
+*.log
+TestResults/
+BenchmarkDotNet.Artifacts/

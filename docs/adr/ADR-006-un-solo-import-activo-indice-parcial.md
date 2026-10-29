@@ -1,0 +1,6 @@
+# ADR-006: Un solo import activo mediante índice único parcial
+
+- **Estado**: Aceptado
+- **Contexto**: el pipeline garantiza un único import activo (estados `Loading`/`Aggregating`) para que el swap de `active_import` y la publicación sean consistentes. Alternativas: `pg_try_advisory_lock` de sesión, o constraint en base de datos.
+- **Decisión**: índice único parcial `uq_import_job_single_active ON import_job ((1)) WHERE status IN ('Loading','Aggregating')` (migración 003). La activación del job (Pending → Loading) que colisiona recibe 23505; el repositorio lo trata como "no se pudo activar": el job queda Pending y el worker lo reintenta más tarde, sin fallar.
+- **Consecuencias**: sin afinidad de sesión (el lock de sesión de `pg_try_advisory_lock` es incompatible con PgBouncer en modo transaction pooling: el lock vive en la sesión, no en la transacción, y el pooling puede reasignar/desconectar sesiones perdiendo el lock o filtrándolo entre clientes). Además es crash-safe: si el proceso muere, el estado en la fila (no en memoria de sesión) es la verdad. Costo: la exclusión se aplica solo al cambiar a estado activo, por lo que la lógica de reintento debe tolerar colisiones (23505) como caso normal.

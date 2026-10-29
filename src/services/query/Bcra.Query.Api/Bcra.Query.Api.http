@@ -1,0 +1,6 @@
+@Bcra.Query.Api_HostAddress = http://localhost:5170
+
+GET {{Bcra.Query.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

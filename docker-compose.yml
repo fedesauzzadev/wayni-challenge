@@ -1,0 +1,113 @@
+name: bcra-microservices
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: bcra-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bcra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env before starting}
+      POSTGRES_DB: ${POSTGRES_DB:-bcra}
+    ports:
+      - "${POSTGRES_PORT:-5544}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - bcra
+
+  localstack:
+    image: localstack/localstack:3.8.1
+    container_name: bcra-localstack
+    environment:
+      SERVICES: sqs,s3
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      DEBUG: ${LOCALSTACK_DEBUG:-0}
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+    networks:
+      - bcra
+
+  ingestion-api:
+    build:
+      context: .
+      dockerfile: src/services/ingestion/Bcra.Ingestion.Api/Dockerfile
+    container_name: bcra-ingestion-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=${POSTGRES_USER:-bcra};Password=${POSTGRES_PASSWORD}"
+      Database__ReadonlyPassword: ${POSTGRES_READONLY_PASSWORD}
+      Ingestion__BatchSize: ${INGESTION_BATCH_SIZE:-200000}
+      Ingestion__AllowedSourceDirs: "/data"
+      Ingestion__AllowedS3Buckets: ${S3_BUCKET:-bcra-local}
+      Upload__ApiKey: ${UPLOAD_API_KEY}
+      AWS__EndpointUrl: "http://localstack:4566"
+      AWS__Region: ${AWS_REGION:-us-east-1}
+      AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-test}
+      AWS__SecretAccessKey: ${AWS_SECRET_ACCESS_KEY:-test}
+    ports:
+      - "${INGESTION_API_PORT:-18080}:8080"
+    volumes:
+      - ${DATA_DIR:-./samples}:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bcra
+
+  query-api:
+    build:
+      context: .
+      dockerfile: src/services/query/Bcra.Query.Api/Dockerfile
+    container_name: bcra-query-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=bcra_readonly;Password=${POSTGRES_READONLY_PASSWORD}"
+      Query__TopMax: ${QUERY_TOP_MAX:-100}
+    ports:
+      - "${QUERY_API_PORT:-18081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ingestion-api:
+        condition: service_started
+    networks:
+      - bcra
+
+  notifier-api:
+    build:
+      context: .
+      dockerfile: src/services/notifier/Bcra.Notifier.Api/Dockerfile
+    container_name: bcra-notifier-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      AWS__EndpointUrl: "http://localstack:4566"
+      AWS__Region: ${AWS_REGION:-us-east-1}
+      AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-test}
+      AWS__SecretAccessKey: ${AWS_SECRET_ACCESS_KEY:-test}
+      Sqs__ImportCompletedQueueUrl: ${SQS_IMPORT_COMPLETED_URL:-}
+      Notifications__WebhookUrl: ${WEBHOOK_URL:-}
+    ports:
+      - "${NOTIFIER_API_PORT:-18082}:8080"
+    depends_on:
+      localstack:
+        condition: service_started
+    networks:
+      - bcra
+
+volumes:
+  pgdata:
+  localstack-data:
+
+networks:
+  bcra:
+    driver: bridge
+
+
+
