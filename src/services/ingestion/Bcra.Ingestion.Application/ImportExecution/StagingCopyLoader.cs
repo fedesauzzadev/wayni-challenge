@@ -27,7 +27,7 @@ public sealed class StagingCopyLoader(
         var batch = new List<ParsedDebtRecord>(Math.Min(batchSize, 8192));
         var batchValidLines = 0L;
         var batchRejectedLines = 0L;
-        var reader = new OffsetLineReader(stream);
+        var reader = new OffsetLineReader(stream, job.BytesCommitted);
 
         while (await reader.ReadNextAsync(cancellationToken) is { } line)
         {

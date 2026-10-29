@@ -26,11 +26,13 @@ services:
     environment:
       SERVICES: sqs,s3
       AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-bcra-local}
       DEBUG: ${LOCALSTACK_DEBUG:-0}
     ports:
       - "${LOCALSTACK_PORT:-4566}:4566"
     volumes:
       - localstack-data:/var/lib/localstack
+      - ./localstack/init:/etc/localstack/init/ready.d
     networks:
       - bcra
 
@@ -46,6 +48,7 @@ services:
       Ingestion__BatchSize: ${INGESTION_BATCH_SIZE:-200000}
       Ingestion__AllowedSourceDirs: "/data"
       Ingestion__AllowedS3Buckets: ${S3_BUCKET:-bcra-local}
+      Sqs__ImportCompletedQueueUrl: ${SQS_IMPORT_COMPLETED_URL:-}
       Upload__ApiKey: ${UPLOAD_API_KEY}
       AWS__EndpointUrl: "http://localstack:4566"
       AWS__Region: ${AWS_REGION:-us-east-1}

@@ -1,5 +1,4 @@
-using Bcra.Notifier.Domain.Notifications;
-using Bcra.Notifier.Application.Notifiers;
+using Bcra.Notifier.Application.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,6 +8,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddNotifierApplication(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<ImportCompletedMessageHandler>();
         return services;
     }
 }

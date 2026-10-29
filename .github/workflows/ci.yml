@@ -26,5 +26,11 @@ jobs:
       - name: Unit tests (Shared.Domain)
         run: dotnet test tests/unit/Bcra.Shared.Domain.Tests --no-build --nologo
 
+      - name: Unit tests (Ingestion.Infrastructure)
+        run: dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests --no-build --nologo
+
+      - name: Unit tests (Notifier.Application)
+        run: dotnet test tests/unit/Bcra.Notifier.Application.Tests --no-build --nologo
+
       - name: Integration tests (Testcontainers, requiere Docker)
         run: dotnet test tests/integration/Bcra.Ingestion.IntegrationTests --no-build --nologo

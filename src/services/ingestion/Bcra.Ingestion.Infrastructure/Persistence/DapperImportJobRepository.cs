@@ -266,6 +266,23 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         await connection.ExecuteAsync(command);
     }
 
+    public async Task<ImportStats> GetImportStatsAsync(Guid importId, CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        var command = new CommandDefinition(
+            """
+            SELECT
+                (SELECT count(*) FROM deudor_agg WHERE import_id = @ImportId) AS total_deudores,
+                (SELECT count(*) FROM entidad_agg WHERE import_id = @ImportId) AS total_entidades,
+                (SELECT COALESCE(sum(suma_total), 0) FROM deudor_agg WHERE import_id = @ImportId) AS suma_total
+            """,
+            new { ImportId = importId },
+            cancellationToken: cancellationToken);
+
+        var row = await connection.QuerySingleAsync<ImportStatsRow>(command);
+        return new ImportStats(row.TotalDeudores, row.TotalEntidades, row.SumaTotal);
+    }
+
     private static string Hex(Guid importId) => importId.ToString("N");
 
     private static string PartitionName(string prefix, Guid importId) => $"{prefix}_{Hex(importId)}";
@@ -383,6 +400,13 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     }
 
     private static bool IsAsciiDigit(byte value) => (uint)(value - (byte)'0') <= 9;
+
+    private sealed class ImportStatsRow
+    {
+        public long TotalDeudores { get; set; }
+        public long TotalEntidades { get; set; }
+        public decimal SumaTotal { get; set; }
+    }
 
     private sealed class ImportJobRow
     {

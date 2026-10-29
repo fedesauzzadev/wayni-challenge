@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Api.Hosting;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Ingestion.Infrastructure.FileSources;
@@ -11,6 +12,7 @@ using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -184,7 +186,11 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
 
 internal static class ImportTestHarness
 {
-    public static ImportJobProcessor CreateProcessor(PostgresFixture fixture, IngestionOptions options, IStagingWriter? stagingWriter = null)
+    public static ImportJobProcessor CreateProcessor(
+        PostgresFixture fixture,
+        IngestionOptions options,
+        IStagingWriter? stagingWriter = null,
+        IImportEventPublisher? eventPublisher = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
@@ -193,11 +199,13 @@ internal static class ImportTestHarness
             new LocalFileSourceFactory(optionsSnapshot),
             new StagingCopyLoader(stagingWriter ?? new NpgsqlStagingWriter(fixture.ConnectionFactory), repository, TimeProvider.System, optionsSnapshot),
             new MaxLiteralSituacionStrategy(),
+            eventPublisher ?? new RecordingImportEventPublisher(),
             TimeProvider.System,
-            optionsSnapshot);
+            optionsSnapshot,
+            NullLogger<ImportJobProcessor>.Instance);
     }
 
-    public static ImportWorkerHostedService CreateWorker(PostgresFixture fixture, IngestionOptions options)
+    public static ImportWorkerHostedService CreateWorker(PostgresFixture fixture, IngestionOptions options, IImportEventPublisher? eventPublisher = null)
     {
         var optionsSnapshot = Options.Create(options);
         var services = new ServiceCollection();
@@ -206,6 +214,7 @@ internal static class ImportTestHarness
         services.AddSingleton<IOptions<IngestionOptions>>(optionsSnapshot);
         services.AddSingleton<Domain.Situations.ISituacionAggregationStrategy>(_ => new MaxLiteralSituacionStrategy());
         services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory>(_ => new LocalFileSourceFactory(optionsSnapshot));
+        services.AddSingleton<IImportEventPublisher>(eventPublisher ?? new RecordingImportEventPublisher());
         services.AddScoped<IImportJobRepository>(_ => fixture.CreateRepository());
         services.AddSingleton<IStagingWriter>(_ => new NpgsqlStagingWriter(fixture.ConnectionFactory));
         services.AddScoped<StagingCopyLoader>();

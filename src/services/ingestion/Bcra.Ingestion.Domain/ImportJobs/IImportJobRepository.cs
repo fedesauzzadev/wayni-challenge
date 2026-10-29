@@ -13,4 +13,5 @@ public interface IImportJobRepository
     Task CreateImportIndexesAsync(Guid importId, CancellationToken cancellationToken);
     Task<Guid?> SwapActiveImportAsync(Guid importId, CancellationToken cancellationToken);
     Task DropImportStorageAsync(Guid importId, CancellationToken cancellationToken);
+    Task<ImportStats> GetImportStatsAsync(Guid importId, CancellationToken cancellationToken);
 }

@@ -11,10 +11,15 @@ public sealed class OffsetLineReader
     private long _streamOffset;
 
     public OffsetLineReader(Stream stream, int bufferSize = 128 * 1024)
+        : this(stream, stream.CanSeek ? stream.Position : 0, bufferSize)
+    {
+    }
+
+    public OffsetLineReader(Stream stream, long streamOffset, int bufferSize = 128 * 1024)
     {
         _stream = stream;
         _buffer = new byte[Math.Max(1024, bufferSize)];
-        _streamOffset = stream.Position;
+        _streamOffset = streamOffset;
     }
 
     public long Position => _streamOffset - _valid + _consumed;

@@ -1,5 +1,6 @@
 using Bcra.Notifier.Application;
 using Bcra.Notifier.Infrastructure;
+using Bcra.Notifier.Infrastructure.Sqs;
 using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Logging;
 using Bcra.Shared.Infrastructure.Web;
@@ -16,6 +17,8 @@ builder.Services
     .AddSharedInfrastructure()
     .AddNotifierApplication(builder.Configuration)
     .AddNotifierInfrastructure(builder.Configuration);
+
+builder.Services.AddHostedService<SqsImportCompletedConsumer>();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();

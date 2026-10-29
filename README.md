@@ -25,8 +25,17 @@ Detalle de decisiones: [ADR-005](docs/adr/ADR-005-reclamo-skip-locked-lease.md),
 ```
 dotnet build Bcra.Microservices.sln
 dotnet test tests/unit/Bcra.Ingestion.Domain.Tests
+dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests
+dotnet test tests/unit/Bcra.Notifier.Application.Tests
 dotnet test tests/integration/Bcra.Ingestion.IntegrationTests   # requiere Docker (Testcontainers)
+
+docker compose up -d --build                                    # stack completo con LocalStack
+docker compose exec localstack awslocal sqs list-queues         # cola import-completed
+docker compose exec localstack awslocal s3 ls                   # bucket bcra-local
+curl http://localhost:18082/health/ready                        # notifier (incluye chequeo SQS)
 ```
+
+Al levantar el compose, `localstack/init/01-init.sh` crea el bucket `S3_BUCKET` (por defecto `bcra-local`) y la cola `import-completed` (idempotente). Las variables `SQS_IMPORT_COMPLETED_URL` y `WEBHOOK_URL` están documentadas en `.env.example`: ingestion publica ahí el `ImportCompletedEvent` al completar un import y notifier lo consume; si `WEBHOOK_URL` se configura, notifier además hace HTTP POST del evento.
 
 ## Datos de muestra
 
