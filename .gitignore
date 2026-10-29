@@ -10,3 +10,4 @@ BenchmarkDotNet.Artifacts/
 *.log
 .opencode/
 samples/
+src/**/openapi/
