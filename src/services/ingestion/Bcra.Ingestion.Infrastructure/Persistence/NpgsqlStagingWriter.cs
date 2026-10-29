@@ -1,18 +1,23 @@
-using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Domain.Parsing;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Bcra.Ingestion.Infrastructure.Persistence;
 
-public sealed class NpgsqlStagingWriter(IDbConnectionFactory connectionFactory) : IStagingWriter
+/// <summary>
+/// Ejecuta el COPY binario sobre la conexión compartida por el llamador: como la transacción
+/// READ COMMITTED ya está abierta en ese conector, el lote a staging confirma atómicamente
+/// con el checkpoint del job en la misma transacción.
+/// </summary>
+public static class NpgsqlStagingWriter
 {
-    public async Task WriteBatchAsync(Guid importId, IReadOnlyList<ParsedDebtRecord> records, CancellationToken cancellationToken)
+    public static async Task WriteBatchAsync(
+        NpgsqlConnection connection,
+        Guid importId,
+        IReadOnlyList<ParsedDebtRecord> records,
+        CancellationToken cancellationToken)
     {
-        using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        var npgsqlConnection = (NpgsqlConnection)connection;
-
-        var importer = await npgsqlConnection.BeginBinaryImportAsync(
+        var importer = await connection.BeginBinaryImportAsync(
             $"COPY debt_staging_{importId:N} (import_id, entidad, cuit, situacion, monto) FROM STDIN (FORMAT BINARY)",
             cancellationToken);
         try

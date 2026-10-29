@@ -3,16 +3,18 @@ using System.Data.Common;
 using System.Text;
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Domain.ImportJobs;
+using Bcra.Ingestion.Domain.Parsing;
 using Dapper;
 using Npgsql;
 
 namespace Bcra.Ingestion.Infrastructure.Persistence;
 
-public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFactory) : IImportJobRepository
+public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFactory)
+    : IImportJobRepository, IStagingBatchCommitter
 {
     private const string UniqueViolationSqlState = "23505";
     private const string SelectColumns = """
-        id, source, etag, size, periodo, status, bytes_committed, lines_processed, lines_rejected,
+        id, source, etag, source_etag, size, periodo, status, bytes_committed, lines_processed, lines_rejected,
         lease_owner, heartbeat_at, created_at, started_at, finished_at
         """;
 
@@ -70,6 +72,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             """
             UPDATE import_job SET
                 etag = @Etag,
+                source_etag = @SourceEtag,
                 size = @Size,
                 periodo = @Periodo,
                 status = @Status,
@@ -86,6 +89,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             {
                 job.Id,
                 job.Etag,
+                job.SourceEtag,
                 job.Size,
                 job.Periodo,
                 Status = job.Status.ToString(),
@@ -128,7 +132,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                         lease_owner = @Owner,
                         heartbeat_at = @Now
                     WHERE id IN (SELECT id FROM candidate)
-                    RETURNING id, source, etag, size, periodo, status, bytes_committed, lines_processed,
+                    RETURNING id, source, etag, source_etag, size, periodo, status, bytes_committed, lines_processed,
                               lines_rejected, lease_owner, heartbeat_at, created_at, started_at, finished_at
                 )
                 SELECT * FROM claimed;
@@ -161,6 +165,70 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             cancellationToken: cancellationToken);
 
         return await connection.ExecuteAsync(command) > 0;
+    }
+
+    /// <summary>
+    /// COPY binario del lote + UPDATE del checkpoint (bytes_committed, líneas) + heartbeat del
+    /// lease en UNA transacción READ COMMITTED: si el worker cae a mitad, no existe ventana
+    /// donde un lote esté en staging sin su checkpoint (que duplicaría filas al reanudar).
+    /// </summary>
+    public async Task CommitBatchAsync(
+        Guid importId,
+        IReadOnlyList<ParsedDebtRecord> records,
+        StagingBatchCheckpoint checkpoint,
+        CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        try
+        {
+            if (records.Count > 0)
+                await NpgsqlStagingWriter.WriteBatchAsync((NpgsqlConnection)connection, importId, records, cancellationToken);
+
+            var command = new CommandDefinition(
+                """
+                UPDATE import_job SET
+                    size = @Size,
+                    source_etag = @SourceEtag,
+                    bytes_committed = @BytesCommitted,
+                    lines_processed = @LinesProcessed,
+                    lines_rejected = @LinesRejected,
+                    heartbeat_at = @HeartbeatAt
+                WHERE id = @Id AND lease_owner = @LeaseOwner AND status = 'Loading';
+                """,
+                new
+                {
+                    Id = importId,
+                    checkpoint.BytesCommitted,
+                    checkpoint.LinesProcessed,
+                    checkpoint.LinesRejected,
+                    checkpoint.LeaseOwner,
+                    checkpoint.HeartbeatAt,
+                    checkpoint.SourceEtag,
+                    checkpoint.Size
+                },
+                transaction: transaction,
+                cancellationToken: cancellationToken);
+
+            if (await connection.ExecuteAsync(command) == 0)
+                throw new InvalidOperationException(
+                    $"Lease for import '{importId}' is no longer owned by '{checkpoint.LeaseOwner}'; the batch was discarded.");
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch
+            {
+                // La conexión ya está rota: la transacción cae con ella.
+            }
+
+            throw;
+        }
     }
 
     public async Task LoadReferenceTablesAsync(Stream entidades, Stream nombres, CancellationToken cancellationToken)
@@ -413,6 +481,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         public Guid Id { get; set; }
         public string Source { get; set; } = string.Empty;
         public string? Etag { get; set; }
+        public string? SourceEtag { get; set; }
         public long Size { get; set; }
         public int? Periodo { get; set; }
         public string Status { get; set; } = string.Empty;
@@ -429,6 +498,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             Id, Source, Etag, Size, Periodo,
             Enum.Parse<ImportJobStatus>(Status),
             BytesCommitted, LinesProcessed, LinesRejected,
-            LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt);
+            LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt, SourceEtag);
     }
 }

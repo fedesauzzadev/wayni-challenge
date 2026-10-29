@@ -11,7 +11,9 @@ Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de ses
 | Crear un import (upload) | `INSERT ... ON CONFLICT (source, etag, periodo) DO NOTHING` sobre índice único `uq_import_job_source_etag_periodo`; si ya existe, se devuelve el job existente (nunca "buscar y después insertar"). |
 | Worker reclama un job | `SELECT ... FOR UPDATE SKIP LOCKED` + `UPDATE` en una transacción READ COMMITTED corta: Pending → Loading (o takeover de Loading/Aggregating con lease vencido), seteando `lease_owner` y `heartbeat_at`. |
 | Un solo import activo | Índice único parcial `uq_import_job_single_active` sobre estados `Loading`/`Aggregating`. Colisión (23505) → el job queda Pending y se reintenta, sin fallar. |
-| Worker caído / conexión perdida | Sin heartbeat, el lease vence (`heartbeat_at <= cutoff`); otro worker lo reclama vía SKIP LOCKED. El worker que pierde la conexión aborta sin confirmar nada más. |
+| Worker caído / conexión perdida | Sin heartbeat, el lease vence (`heartbeat_at <= cutoff`); otro worker lo reclama vía SKIP LOCKED y retoma desde `bytes_committed`. El worker que pierde la conexión aborta sin confirmar nada más. |
+| Commit de lote a staging | El COPY binario del lote y el UPDATE del checkpoint (`bytes_committed`, líneas, etag/size, heartbeat) se confirman en UNA transacción READ COMMITTED: no existe lote en staging sin su checkpoint (reanudar no duplica filas). |
+| Fuente modificada al reanudar | Si al reabrir la fuente su ETag o size no coinciden con el job, termina `Failed` (no retry infinito con lease vencido). |
 | Renovar el lease | `UPDATE import_job SET heartbeat_at = now WHERE id = @id AND lease_owner = @owner AND status IN ('Loading','Aggregating')`. |
 | Swap de versión publicada | `UPDATE` de la fila única de `active_import` en transacción corta con `FOR UPDATE`; las lecturas del query-service son MVCC (ven la versión vieja o la nueva, nunca mixta). |
 | Índices del import nuevo | `CREATE INDEX` (no CONCURRENTLY) sobre la partición de staging y los agregados del import, ANTES del swap. |
@@ -25,6 +27,7 @@ Detalle de decisiones: [ADR-005](docs/adr/ADR-005-reclamo-skip-locked-lease.md),
 ```
 dotnet build Bcra.Microservices.sln
 dotnet test tests/unit/Bcra.Ingestion.Domain.Tests
+dotnet test tests/unit/Bcra.Ingestion.Application.Tests
 dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests
 dotnet test tests/unit/Bcra.Notifier.Application.Tests
 dotnet test tests/integration/Bcra.Ingestion.IntegrationTests   # requiere Docker (Testcontainers)

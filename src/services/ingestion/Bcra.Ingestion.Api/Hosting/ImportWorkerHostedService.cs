@@ -17,6 +17,9 @@ public sealed partial class ImportWorkerHostedService(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Import {JobId} aborted by connection loss; the lease will expire and another worker will reclaim it")]
     private partial void LogAbortedByConnectionLoss(Guid jobId);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Import {JobId} failed: the source changed mid-import (ETag/size mismatch)")]
+    private partial void LogFailed(Guid jobId);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var pollDelay = TimeSpan.FromSeconds(Math.Max(1, options.Value.PollDelaySeconds));
@@ -37,6 +40,8 @@ public sealed partial class ImportWorkerHostedService(
                     shouldDelay = false;
                 else if (result.Outcome == ImportProcessingOutcome.AbortedByConnectionLoss && result.JobId is { } jobId)
                     LogAbortedByConnectionLoss(jobId);
+                else if (result.Outcome == ImportProcessingOutcome.Failed && result.JobId is { } failedJobId)
+                    LogFailed(failedJobId);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

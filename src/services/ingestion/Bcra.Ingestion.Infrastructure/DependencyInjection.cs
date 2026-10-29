@@ -36,10 +36,11 @@ public static class DependencyInjection
 
         services.AddSingleton<DbUpMigrator>();
         services.AddScoped<IImportJobRepository, DapperImportJobRepository>();
+        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter>(sp =>
+            (Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
         services.AddSingleton<LocalFileSourceFactory>();
         services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory, RoutingFileSourceFactory>();
         services.AddScoped<Bcra.Ingestion.Application.Ports.IImportEventPublisher, SqsImportEventPublisher>();
-        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingWriter, NpgsqlStagingWriter>();
 
         services.AddSingleton<ISituacionAggregationStrategy>(sp =>
         {

@@ -69,4 +69,27 @@ public sealed class UploadIdempotencyTests(PostgresFixture fixture)
         first.Value.AlreadyExisted.Should().BeFalse();
         second.Value.AlreadyExisted.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task SequentialDuplicateUpload_OfSameSourceEtagAndPeriodo_ReturnsExistingJob()
+    {
+        await fixture.ResetAsync();
+        var handler = CreateHandler();
+        var etag = $"etag-{Guid.NewGuid():N}";
+
+        var first = await handler.HandleAsync(Command("/data/deudores.txt", etag), CancellationToken.None);
+        var duplicate = await handler.HandleAsync(Command("/data/deudores.txt", etag), CancellationToken.None);
+
+        first.IsSuccess.Should().BeTrue();
+        duplicate.IsSuccess.Should().BeTrue();
+        duplicate.Value.Id.Should().Be(first.Value.Id, "mismo source+etag+periodo devuelve el job existente");
+        first.Value.AlreadyExisted.Should().BeFalse("el primero es 201 Created");
+        duplicate.Value.AlreadyExisted.Should().BeTrue("el duplicado es 200 OK con el job existente");
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        var rows = await connection.QuerySingleAsync<int>(
+            "SELECT COUNT(*) FROM import_job WHERE source = @Source AND etag = @Etag AND periodo = @Periodo",
+            new { Source = "/data/deudores.txt", Etag = etag, Periodo = 202311 });
+        rows.Should().Be(1);
+    }
 }

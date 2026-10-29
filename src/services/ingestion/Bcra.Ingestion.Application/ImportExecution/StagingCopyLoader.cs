@@ -6,14 +6,15 @@ using Microsoft.Extensions.Options;
 
 namespace Bcra.Ingestion.Application.ImportExecution;
 
-public interface IStagingWriter
-{
-    Task WriteBatchAsync(Guid importId, IReadOnlyList<ParsedDebtRecord> records, CancellationToken cancellationToken);
-}
+/// <summary>
+/// La fuente cambió (ETag o size) respecto del import en curso: reanudarla duplicaría o
+/// corrompería datos, así que el job debe terminar <see cref="ImportJobStatus.Failed"/>.
+/// </summary>
+public sealed class SourceChangedException(string message, Exception? innerException = null)
+    : Exception(message, innerException);
 
 public sealed class StagingCopyLoader(
-    IStagingWriter stagingWriter,
-    IImportJobRepository repository,
+    IStagingBatchCommitter batchCommitter,
     TimeProvider clock,
     IOptions<IngestionOptions> options)
 {
@@ -21,7 +22,14 @@ public sealed class StagingCopyLoader(
     {
         var opened = await source.OpenAsync(job.BytesCommitted, cancellationToken);
         await using var stream = opened.Stream;
-        job.SetSourceMetadata(opened.TotalLength, job.Etag ?? opened.Etag);
+        try
+        {
+            job.ObserveSource(opened.TotalLength, opened.Etag);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new SourceChangedException(ex.Message, ex);
+        }
 
         var batchSize = Math.Max(1, options.Value.BatchSize);
         var batch = new List<ParsedDebtRecord>(Math.Min(batchSize, 8192));
@@ -62,14 +70,15 @@ public sealed class StagingCopyLoader(
         long rejectedLines,
         CancellationToken cancellationToken)
     {
-        if (batch.Count > 0)
-        {
-            await stagingWriter.WriteBatchAsync(job.Id, batch, cancellationToken);
-            batch.Clear();
-        }
-
         job.CommitBatch(nextOffset, validLines, rejectedLines);
-        await repository.SaveAsync(job, cancellationToken);
-        await repository.RenewLeaseAsync(job.Id, leaseOwner, clock.GetUtcNow(), cancellationToken);
+
+        await batchCommitter.CommitBatchAsync(
+            job.Id,
+            batch,
+            new StagingBatchCheckpoint(
+                job.BytesCommitted, job.LinesProcessed, job.LinesRejected,
+                leaseOwner, clock.GetUtcNow(), job.SourceEtag, job.Size),
+            cancellationToken);
+        batch.Clear();
     }
 }

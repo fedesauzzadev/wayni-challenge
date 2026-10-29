@@ -14,6 +14,7 @@ public sealed class ImportJob
     public Guid Id { get; }
     public string Source { get; }
     public string? Etag { get; internal set; }
+    public string? SourceEtag { get; internal set; }
     public long Size { get; internal set; }
     public int? Periodo { get; internal set; }
     public ImportJobStatus Status { get; internal set; }
@@ -105,7 +106,8 @@ public sealed class ImportJob
         DateTimeOffset? heartbeatAt,
         DateTimeOffset createdAtUtc,
         DateTimeOffset? startedAtUtc,
-        DateTimeOffset? finishedAtUtc)
+        DateTimeOffset? finishedAtUtc,
+        string? sourceEtag = null)
     {
         var job = new ImportJob(id, source, status, createdAtUtc)
         {
@@ -118,7 +120,8 @@ public sealed class ImportJob
             LeaseOwner = leaseOwner,
             HeartbeatAt = heartbeatAt,
             StartedAtUtc = startedAtUtc,
-            FinishedAtUtc = finishedAtUtc
+            FinishedAtUtc = finishedAtUtc,
+            SourceEtag = sourceEtag
         };
         return job;
     }
@@ -133,6 +136,23 @@ public sealed class ImportJob
 
         Size = size;
         Etag = etag ?? Etag;
+    }
+
+    /// <summary>
+    /// Registra lo observado al REABRIR la fuente durante la carga: el <see cref="SourceEtag"/>
+    /// reportado por la fuente se valida contra el de la apertura previa (persistido con el
+    /// checkpoint), sin tocar el etag declarado por el cliente (clave de idempotencia del upload).
+    /// </summary>
+    public void ObserveSource(long size, string? sourceEtag)
+    {
+        EnsureStatus(ImportJobStatus.Pending, ImportJobStatus.Loading);
+        if (Size > 0 && Size != size)
+            throw new InvalidOperationException("Source size changed; the file was modified.");
+        if (!string.IsNullOrEmpty(SourceEtag) && !string.IsNullOrEmpty(sourceEtag) && SourceEtag != sourceEtag)
+            throw new InvalidOperationException("Source ETag changed; the file was modified.");
+
+        Size = size;
+        SourceEtag = sourceEtag ?? SourceEtag;
     }
 
     public void SetPeriodo(int periodo)

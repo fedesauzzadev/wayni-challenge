@@ -13,7 +13,8 @@ public enum ImportProcessingOutcome
 {
     NothingToClaim,
     Completed,
-    AbortedByConnectionLoss
+    AbortedByConnectionLoss,
+    Failed
 }
 
 public sealed record ImportProcessingResult(ImportProcessingOutcome Outcome, Guid? JobId)
@@ -82,11 +83,21 @@ public sealed partial class ImportJobProcessor(
 
             return new ImportProcessingResult(ImportProcessingOutcome.Completed, job.Id);
         }
+        catch (SourceChangedException ex)
+        {
+            job.MarkFailed(clock.GetUtcNow());
+            await repository.SaveAsync(job, cancellationToken);
+            LogSourceChanged(job.Id, ex);
+            return new ImportProcessingResult(ImportProcessingOutcome.Failed, job.Id);
+        }
         catch (DbException)
         {
             return new ImportProcessingResult(ImportProcessingOutcome.AbortedByConnectionLoss, job.Id);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} changed mid-import (ETag/size mismatch); the job is now Failed instead of retrying forever")]
+    private partial void LogSourceChanged(Guid jobId, Exception exception);
 
     private async Task PublishCompletedEventAsync(ImportJob job, CancellationToken cancellationToken)
     {

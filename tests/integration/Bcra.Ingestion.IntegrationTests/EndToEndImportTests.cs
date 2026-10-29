@@ -124,8 +124,8 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
         candidate.SetPeriodo(202311);
         var (job, _) = await repository.AddOrGetExistingAsync(candidate, CancellationToken.None);
 
-        var faultingWriter = new FaultingStagingWriter(new NpgsqlStagingWriter(fixture.ConnectionFactory), failOnWriteCall: 3);
-        var interrupted = ImportTestHarness.CreateProcessor(fixture, options, faultingWriter);
+        var faultingCommitter = new FaultingStagingBatchCommitter(fixture.CreateRepository(), failOnCommitCall: 3);
+        var interrupted = ImportTestHarness.CreateProcessor(fixture, options, batchCommitter: faultingCommitter);
 
         var aborted = await interrupted.TryProcessNextAsync("worker-1", CancellationToken.None);
         aborted.Outcome.Should().Be(ImportProcessingOutcome.AbortedByConnectionLoss);
@@ -169,18 +169,19 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
         }
     }
 
-    private sealed class FaultingStagingWriter(IStagingWriter inner, int failOnWriteCall) : IStagingWriter
+}
+
+internal sealed class FaultingStagingBatchCommitter(IStagingBatchCommitter inner, int failOnCommitCall) : IStagingBatchCommitter
+{
+    private int _commitCalls;
+
+    public Task CommitBatchAsync(Guid importId, IReadOnlyList<Domain.Parsing.ParsedDebtRecord> records, StagingBatchCheckpoint checkpoint, CancellationToken cancellationToken)
     {
-        private int _writeCalls;
+        _commitCalls++;
+        if (_commitCalls == failOnCommitCall)
+            throw new NpgsqlException("Simulated connection loss mid-batch");
 
-        public Task WriteBatchAsync(Guid importId, IReadOnlyList<Domain.Parsing.ParsedDebtRecord> records, CancellationToken cancellationToken)
-        {
-            _writeCalls++;
-            if (_writeCalls == failOnWriteCall)
-                throw new NpgsqlException("Simulated connection loss mid-batch");
-
-            return inner.WriteBatchAsync(importId, records, cancellationToken);
-        }
+        return inner.CommitBatchAsync(importId, records, checkpoint, cancellationToken);
     }
 }
 
@@ -189,16 +190,17 @@ internal static class ImportTestHarness
     public static ImportJobProcessor CreateProcessor(
         PostgresFixture fixture,
         IngestionOptions options,
-        IStagingWriter? stagingWriter = null,
-        IImportEventPublisher? eventPublisher = null)
+        IStagingBatchCommitter? batchCommitter = null,
+        IImportEventPublisher? eventPublisher = null,
+        Domain.Situations.ISituacionAggregationStrategy? situacionStrategy = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
         return new ImportJobProcessor(
             repository,
             new LocalFileSourceFactory(optionsSnapshot),
-            new StagingCopyLoader(stagingWriter ?? new NpgsqlStagingWriter(fixture.ConnectionFactory), repository, TimeProvider.System, optionsSnapshot),
-            new MaxLiteralSituacionStrategy(),
+            new StagingCopyLoader(batchCommitter ?? repository, TimeProvider.System, optionsSnapshot),
+            situacionStrategy ?? new MaxLiteralSituacionStrategy(),
             eventPublisher ?? new RecordingImportEventPublisher(),
             TimeProvider.System,
             optionsSnapshot,
@@ -216,7 +218,8 @@ internal static class ImportTestHarness
         services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory>(_ => new LocalFileSourceFactory(optionsSnapshot));
         services.AddSingleton<IImportEventPublisher>(eventPublisher ?? new RecordingImportEventPublisher());
         services.AddScoped<IImportJobRepository>(_ => fixture.CreateRepository());
-        services.AddSingleton<IStagingWriter>(_ => new NpgsqlStagingWriter(fixture.ConnectionFactory));
+        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter>(sp =>
+            (Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
         services.AddScoped<StagingCopyLoader>();
         services.AddScoped<ImportJobProcessor>();
         var provider = services.BuildServiceProvider();
