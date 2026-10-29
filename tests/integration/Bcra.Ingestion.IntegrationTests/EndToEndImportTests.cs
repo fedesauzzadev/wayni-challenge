@@ -199,11 +199,12 @@ internal static class ImportTestHarness
         return new ImportJobProcessor(
             repository,
             new LocalFileSourceFactory(optionsSnapshot),
-            new StagingCopyLoader(batchCommitter ?? repository, TimeProvider.System, optionsSnapshot),
+            new StagingCopyLoader(batchCommitter ?? repository, TimeProvider.System, optionsSnapshot, new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter()),
             situacionStrategy ?? new MaxLiteralSituacionStrategy(),
             eventPublisher ?? new RecordingImportEventPublisher(),
             TimeProvider.System,
             optionsSnapshot,
+            new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter(),
             NullLogger<ImportJobProcessor>.Instance);
     }
 
@@ -213,6 +214,7 @@ internal static class ImportTestHarness
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter());
         services.AddSingleton<IOptions<IngestionOptions>>(optionsSnapshot);
         services.AddSingleton<Domain.Situations.ISituacionAggregationStrategy>(_ => new MaxLiteralSituacionStrategy());
         services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory>(_ => new LocalFileSourceFactory(optionsSnapshot));

@@ -2,6 +2,7 @@ using Bcra.Ingestion.Application.Options;
 using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Ingestion.Domain.Parsing;
+using Bcra.Shared.Infrastructure.Observability;
 using Microsoft.Extensions.Options;
 
 namespace Bcra.Ingestion.Application.ImportExecution;
@@ -16,7 +17,8 @@ public sealed class SourceChangedException(string message, Exception? innerExcep
 public sealed class StagingCopyLoader(
     IStagingBatchCommitter batchCommitter,
     TimeProvider clock,
-    IOptions<IngestionOptions> options)
+    IOptions<IngestionOptions> options,
+    ImportPipelineMeter pipelineMeter)
 {
     public async Task LoadAsync(ImportJob job, IFileSource source, string leaseOwner, CancellationToken cancellationToken)
     {
@@ -80,5 +82,9 @@ public sealed class StagingCopyLoader(
                 leaseOwner, clock.GetUtcNow(), job.SourceEtag, job.Size),
             cancellationToken);
         batch.Clear();
+
+        pipelineMeter.AddBatchCommitted();
+        pipelineMeter.AddLinesCopied(validLines);
+        pipelineMeter.AddLinesRejected(rejectedLines);
     }
 }

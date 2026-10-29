@@ -20,6 +20,7 @@ builder.Host.UseSerilog((context, configuration) =>
 
 builder.Services
     .AddSharedInfrastructure()
+    .AddObservability("ingestion-service")
     .AddIngestionApplication(builder.Configuration)
     .AddIngestionInfrastructure(builder.Configuration);
 
@@ -79,10 +80,11 @@ builder.Services.AddOpenApi(options =>
 var app = builder.Build();
 
 app.UseExceptionHandler();
-app.UseSerilogRequestLogging();
 app.UseCorrelationId();
+app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 
+app.MapObservabilityEndpoints();
 app.MapOpenApi();
 app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "BCRA Ingestion API v1"));
 

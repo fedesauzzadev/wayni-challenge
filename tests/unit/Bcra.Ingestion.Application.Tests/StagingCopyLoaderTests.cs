@@ -15,7 +15,7 @@ public sealed class StagingCopyLoaderTests
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
     private static StagingCopyLoader CreateLoader(CommitRecorder recorder, int batchSize) =>
-        new(recorder, new FixedTimeProvider(Now), Microsoft.Extensions.Options.Options.Create(new IngestionOptions { BatchSize = batchSize }));
+        new(recorder, new FixedTimeProvider(Now), Microsoft.Extensions.Options.Options.Create(new IngestionOptions { BatchSize = batchSize }), new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter());
 
     private static ImportJob NewLoadingJob() 
     {

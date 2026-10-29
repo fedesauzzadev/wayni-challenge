@@ -259,6 +259,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             GROUP BY import_id, entidad;
             """,
             new { ImportId = importId },
+            commandTimeout: 0,
             transaction: transaction,
             cancellationToken: cancellationToken);
 
@@ -287,6 +288,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
             CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}';
             """,
+            commandTimeout: 0,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
@@ -330,6 +332,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             DROP INDEX IF EXISTS ix_deudor_agg_{hex}_cuit;
             DROP INDEX IF EXISTS ix_entidad_agg_{hex}_entidad;
             """,
+            commandTimeout: 0,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
@@ -349,6 +352,17 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
 
         var row = await connection.QuerySingleAsync<ImportStatsRow>(command);
         return new ImportStats(row.TotalDeudores, row.TotalEntidades, row.SumaTotal);
+    }
+
+    public async Task<IReadOnlyDictionary<string, int>> CountByStatusAsync(CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        var command = new CommandDefinition(
+            "SELECT status, count(*) AS count FROM import_job GROUP BY status",
+            cancellationToken: cancellationToken);
+
+        var rows = await connection.QueryAsync<(string Status, int Count)>(command);
+        return rows.ToDictionary(row => row.Status, row => row.Count, StringComparer.Ordinal);
     }
 
     private static string Hex(Guid importId) => importId.ToString("N");

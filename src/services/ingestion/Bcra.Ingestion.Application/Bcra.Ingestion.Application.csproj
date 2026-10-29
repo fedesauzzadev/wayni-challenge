@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Bcra.Ingestion.Domain\Bcra.Ingestion.Domain.csproj" />
     <ProjectReference Include="..\..\..\shared\Bcra.Shared.Domain\Bcra.Shared.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\Bcra.Shared.Infrastructure\Bcra.Shared.Infrastructure.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

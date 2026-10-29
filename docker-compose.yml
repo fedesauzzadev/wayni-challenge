@@ -43,7 +43,7 @@ services:
     container_name: bcra-ingestion-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=${POSTGRES_USER:-bcra};Password=${POSTGRES_PASSWORD}"
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=${POSTGRES_USER:-bcra};Password=${POSTGRES_PASSWORD};MaxPoolSize=${DATABASE_MAXPOOLSIZE:-50};Max Auto Prepare=${DATABASE_MAXAUTOPREPARE:-16}"
       Database__ReadonlyPassword: ${POSTGRES_READONLY_PASSWORD}
       Ingestion__BatchSize: ${INGESTION_BATCH_SIZE:-200000}
       Ingestion__AllowedSourceDirs: "/data"
@@ -104,9 +104,43 @@ services:
     networks:
       - bcra
 
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    container_name: bcra-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - bcra
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    container_name: bcra-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - bcra
+
 volumes:
   pgdata:
   localstack-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   bcra:

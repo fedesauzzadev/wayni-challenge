@@ -14,4 +14,5 @@ public interface IImportJobRepository
     Task<Guid?> SwapActiveImportAsync(Guid importId, CancellationToken cancellationToken);
     Task DropImportStorageAsync(Guid importId, CancellationToken cancellationToken);
     Task<ImportStats> GetImportStatsAsync(Guid importId, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<string, int>> CountByStatusAsync(CancellationToken cancellationToken);
 }
