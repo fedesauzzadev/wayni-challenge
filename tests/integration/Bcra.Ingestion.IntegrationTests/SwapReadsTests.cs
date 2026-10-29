@@ -1,7 +1,6 @@
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
 using Bcra.Ingestion.Application.UploadImport;
-using Bcra.Ingestion.Infrastructure.Persistence;
 using Dapper;
 using FluentAssertions;
 using Npgsql;
@@ -18,33 +17,23 @@ public sealed class SwapReadsTests(PostgresFixture fixture)
     {
         await fixture.ResetAsync();
         var repository = fixture.CreateRepository();
-        var processor = new ImportJobProcessor(repository, TimeProvider.System,
-            Microsoft.Extensions.Options.Options.Create(new IngestionOptions()));
+        var root = Path.Combine(Path.GetTempPath(), "bcra-e2e", Guid.NewGuid().ToString("N"));
+        var sampleA = SampleFiles.Write(Path.Combine(root, "a"), validLines: 30, seed: 1, fixedLines: [(Cuit, 15, 1, 100.0m)]);
+        var sampleB = SampleFiles.Write(Path.Combine(root, "b"), validLines: 30, seed: 2, fixedLines: [(Cuit, 27, 1, 200.0m)]);
+
+        var options = new IngestionOptions { BatchSize = 100, AllowedSourceDirs = [root] };
+        var processor = ImportTestHarness.CreateProcessor(fixture, options);
         var uploadHandler = new RequestImportHandler(repository, TimeProvider.System);
 
         var importA = (await uploadHandler.HandleAsync(
-            new RequestImportCommand("/data/swap-a.txt", $"etag-{Guid.NewGuid():N}", 1_000, 202311),
+            new RequestImportCommand(sampleA.DeudoresPath, $"etag-{Guid.NewGuid():N}", sampleA.DeudoresLength, 202311),
             CancellationToken.None)).Value;
         var runA = await processor.TryProcessNextAsync("worker-1", CancellationToken.None);
         runA.Outcome.Should().Be(ImportProcessingOutcome.Completed);
 
-        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
-        {
-            await connection.ExecuteAsync(
-                "INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total) VALUES (@Id, @Cuit, 1, 100.0)",
-                new { Id = importA.Id, Cuit = Cuit });
-        }
-
         var importB = (await uploadHandler.HandleAsync(
-            new RequestImportCommand("/data/swap-b.txt", $"etag-{Guid.NewGuid():N}", 1_000, 202311),
+            new RequestImportCommand(sampleB.DeudoresPath, $"etag-{Guid.NewGuid():N}", sampleB.DeudoresLength, 202311),
             CancellationToken.None)).Value;
-        await repository.CreateImportStorageAsync(importB.Id, CancellationToken.None);
-        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
-        {
-            await connection.ExecuteAsync(
-                "INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total) VALUES (@Id, @Cuit, 1, 200.0)",
-                new { Id = importB.Id, Cuit = Cuit });
-        }
 
         var processing = Task.Run(() => processor.TryProcessNextAsync("worker-2", CancellationToken.None));
         var observations = new List<(Guid ImportId, decimal Suma)>();

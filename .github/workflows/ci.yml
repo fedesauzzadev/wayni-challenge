@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Bcra.Microservices.sln --nologo
+
+      - name: Unit tests (Ingestion.Domain)
+        run: dotnet test tests/unit/Bcra.Ingestion.Domain.Tests --no-build --nologo
+
+      - name: Unit tests (Shared.Domain)
+        run: dotnet test tests/unit/Bcra.Shared.Domain.Tests --no-build --nologo
+
+      - name: Integration tests (Testcontainers, requiere Docker)
+        run: dotnet test tests/integration/Bcra.Ingestion.IntegrationTests --no-build --nologo

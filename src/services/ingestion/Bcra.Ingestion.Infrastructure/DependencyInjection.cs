@@ -5,6 +5,7 @@ using Bcra.Ingestion.Infrastructure.HealthChecks;
 using Bcra.Ingestion.Infrastructure.Options;
 using Bcra.Ingestion.Infrastructure.Persistence;
 using Bcra.Ingestion.Infrastructure.Persistence.Migrations;
+using Bcra.Ingestion.Infrastructure.FileSources;
 using Bcra.Ingestion.Infrastructure.Situations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,8 @@ public static class DependencyInjection
 
         services.AddSingleton<DbUpMigrator>();
         services.AddScoped<IImportJobRepository, DapperImportJobRepository>();
+        services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory, LocalFileSourceFactory>();
+        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingWriter, NpgsqlStagingWriter>();
 
         services.AddSingleton<ISituacionAggregationStrategy>(sp =>
         {

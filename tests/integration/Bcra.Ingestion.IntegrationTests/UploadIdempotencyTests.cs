@@ -22,7 +22,9 @@ public sealed class UploadIdempotencyTests(PostgresFixture fixture)
     {
         await fixture.ResetAsync();
         var handler = CreateHandler();
-        var command = Command("/data/dup.txt", $"etag-{Guid.NewGuid():N}");
+        var sample = SampleFiles.Write(
+            Path.Combine(Path.GetTempPath(), "bcra-e2e", Guid.NewGuid().ToString("N")), validLines: 20);
+        var command = new RequestImportCommand(sample.DeudoresPath, $"etag-{Guid.NewGuid():N}", sample.DeudoresLength, 202311);
 
         var results = await Task.WhenAll(
             handler.HandleAsync(command, CancellationToken.None),
@@ -43,9 +45,8 @@ public sealed class UploadIdempotencyTests(PostgresFixture fixture)
             new { command.Source, command.Etag, command.Periodo });
         rows.Should().Be(1);
 
-        var repository = fixture.CreateRepository();
-        var processor = new ImportJobProcessor(repository, TimeProvider.System,
-            Microsoft.Extensions.Options.Options.Create(new IngestionOptions()));
+        var options = new IngestionOptions { BatchSize = 100, AllowedSourceDirs = [sample.Directory] };
+        var processor = ImportTestHarness.CreateProcessor(fixture, options);
 
         var firstRun = await processor.TryProcessNextAsync("worker-1", CancellationToken.None);
         var secondRun = await processor.TryProcessNextAsync("worker-2", CancellationToken.None);

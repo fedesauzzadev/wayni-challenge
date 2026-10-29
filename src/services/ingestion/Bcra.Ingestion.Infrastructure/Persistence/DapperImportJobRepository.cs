@@ -1,4 +1,7 @@
 using System.Data;
+using System.Data.Common;
+using System.Text;
+using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Dapper;
 using Npgsql;
@@ -160,6 +163,41 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         return await connection.ExecuteAsync(command) > 0;
     }
 
+    public async Task LoadReferenceTablesAsync(Stream entidades, Stream nombres, CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await LoadEntidadesAsync(connection, entidades, cancellationToken);
+        await LoadDeudoresNombresAsync(connection, nombres, cancellationToken);
+    }
+
+    public async Task AggregateImportAsync(Guid importId, string situacionExpression, CancellationToken cancellationToken)
+    {
+        var staging = PartitionName("debt_staging", importId);
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var command = new CommandDefinition(
+            $"""
+            DELETE FROM deudor_agg WHERE import_id = @ImportId;
+            DELETE FROM entidad_agg WHERE import_id = @ImportId;
+
+            INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total)
+            SELECT import_id, cuit, {situacionExpression}, SUM(monto)
+            FROM {staging}
+            GROUP BY import_id, cuit;
+
+            INSERT INTO entidad_agg (import_id, codigo_entidad, suma_total)
+            SELECT import_id, entidad, SUM(monto)
+            FROM {staging}
+            GROUP BY import_id, entidad;
+            """,
+            new { ImportId = importId },
+            transaction: transaction,
+            cancellationToken: cancellationToken);
+
+        await connection.ExecuteAsync(command);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task CreateImportStorageAsync(Guid importId, CancellationToken cancellationToken)
     {
         var partition = PartitionName("debt_staging", importId);
@@ -231,6 +269,120 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     private static string Hex(Guid importId) => importId.ToString("N");
 
     private static string PartitionName(string prefix, Guid importId) => $"{prefix}_{Hex(importId)}";
+
+    private const int ReferenceUpsertBatchSize = 5000;
+
+    private static async Task LoadEntidadesAsync(DbConnection connection, Stream stream, CancellationToken cancellationToken)
+    {
+        var reader = new OffsetLineReader(stream);
+        var codigos = new List<short>();
+        var nombres = new List<string>();
+
+        while (await reader.ReadNextAsync(cancellationToken) is { } line)
+        {
+            var span = line.Line.Span;
+            if (span.Length < 6)
+                continue;
+            if (!TryParseShortField(span[..5], out var codigo))
+                continue;
+
+            codigos.Add(codigo);
+            nombres.Add(Encoding.Latin1.GetString(span[5..]).Trim());
+
+            if (codigos.Count >= ReferenceUpsertBatchSize)
+            {
+                await UpsertEntidadesAsync(connection, codigos, nombres, cancellationToken);
+                codigos.Clear();
+                nombres.Clear();
+            }
+        }
+
+        if (codigos.Count > 0)
+            await UpsertEntidadesAsync(connection, codigos, nombres, cancellationToken);
+    }
+
+    private static Task<int> UpsertEntidadesAsync(DbConnection connection, List<short> codigos, List<string> nombres, CancellationToken cancellationToken)
+    {
+        var command = new CommandDefinition(
+            """
+            INSERT INTO entidad (codigo, nombre)
+            SELECT codigo, nombre
+            FROM UNNEST(@Codigos::smallint[], @Nombres::text[]) AS t(codigo, nombre)
+            ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre;
+            """,
+            new { Codigos = codigos.ToArray(), Nombres = nombres.ToArray() },
+            cancellationToken: cancellationToken);
+        return connection.ExecuteAsync(command);
+    }
+
+    private static async Task LoadDeudoresNombresAsync(DbConnection connection, Stream stream, CancellationToken cancellationToken)
+    {
+        var reader = new OffsetLineReader(stream);
+        var cuits = new List<string>();
+        var nombres = new List<string>();
+
+        while (await reader.ReadNextAsync(cancellationToken) is { } line)
+        {
+            var span = line.Line.Span;
+            if (span.Length < 12)
+                continue;
+
+            var cuit = Encoding.Latin1.GetString(span[..11]).Trim();
+            if (cuit.Length == 0 || cuit.Length > 11)
+                continue;
+
+            cuits.Add(cuit);
+            nombres.Add(Encoding.Latin1.GetString(span[11..]).Trim());
+
+            if (cuits.Count >= ReferenceUpsertBatchSize)
+            {
+                await UpsertDeudoresNombresAsync(connection, cuits, nombres, cancellationToken);
+                cuits.Clear();
+                nombres.Clear();
+            }
+        }
+
+        if (cuits.Count > 0)
+            await UpsertDeudoresNombresAsync(connection, cuits, nombres, cancellationToken);
+    }
+
+    private static Task<int> UpsertDeudoresNombresAsync(DbConnection connection, List<string> cuits, List<string> nombres, CancellationToken cancellationToken)
+    {
+        var command = new CommandDefinition(
+            """
+            INSERT INTO deudor_nombre (cuit, nombre)
+            SELECT cuit, nombre
+            FROM UNNEST(@Cuits::char(11)[], @Nombres::text[]) AS t(cuit, nombre)
+            ON CONFLICT (cuit) DO UPDATE SET nombre = EXCLUDED.nombre;
+            """,
+            new { Cuits = cuits.ToArray(), Nombres = nombres.ToArray() },
+            cancellationToken: cancellationToken);
+        return connection.ExecuteAsync(command);
+    }
+
+    private static bool TryParseShortField(ReadOnlySpan<byte> field, out short value)
+    {
+        field = field.Trim((byte)' ');
+        value = 0;
+        if (field.IsEmpty || field.Length > 5)
+            return false;
+
+        var accumulated = 0;
+        foreach (var digit in field)
+        {
+            if (!IsAsciiDigit(digit))
+                return false;
+            accumulated = accumulated * 10 + (digit - (byte)'0');
+        }
+
+        if (accumulated > short.MaxValue)
+            return false;
+
+        value = (short)accumulated;
+        return true;
+    }
+
+    private static bool IsAsciiDigit(byte value) => (uint)(value - (byte)'0') <= 9;
 
     private sealed class ImportJobRow
     {

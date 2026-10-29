@@ -24,6 +24,7 @@ builder.Services
 
 builder.Services.AddSingleton<StartupState>();
 builder.Services.AddHostedService<MigrationHostedService>();
+builder.Services.AddHostedService<ImportWorkerHostedService>();
 
 builder.Services.AddRateLimiter(options =>
 {

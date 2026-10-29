@@ -54,6 +54,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
             DELETE FROM deudor_agg;
             DELETE FROM entidad_agg;
+            DELETE FROM entidad;
+            DELETE FROM deudor_nombre;
             DELETE FROM import_job;
             """);
     }

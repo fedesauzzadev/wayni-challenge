@@ -7,6 +7,8 @@ public interface IImportJobRepository
     Task SaveAsync(ImportJob job, CancellationToken cancellationToken);
     Task<ImportJob?> ClaimNextAsync(string leaseOwner, DateTimeOffset utcNow, DateTimeOffset heartbeatCutoff, CancellationToken cancellationToken);
     Task<bool> RenewLeaseAsync(Guid jobId, string leaseOwner, DateTimeOffset utcNow, CancellationToken cancellationToken);
+    Task LoadReferenceTablesAsync(Stream entidades, Stream nombres, CancellationToken cancellationToken);
+    Task AggregateImportAsync(Guid importId, string situacionExpression, CancellationToken cancellationToken);
     Task CreateImportStorageAsync(Guid importId, CancellationToken cancellationToken);
     Task CreateImportIndexesAsync(Guid importId, CancellationToken cancellationToken);
     Task<Guid?> SwapActiveImportAsync(Guid importId, CancellationToken cancellationToken);

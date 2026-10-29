@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<RequestImportHandler>();
         services.AddScoped<ImportJobProcessor>();
+        services.AddScoped<StagingCopyLoader>();
         return services;
     }
 }

@@ -1,5 +1,8 @@
 using System.Data.Common;
+using Bcra.Ingestion.Application.Options;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
+using Bcra.Ingestion.Domain.Situations;
 using Microsoft.Extensions.Options;
 
 namespace Bcra.Ingestion.Application.ImportExecution;
@@ -18,14 +21,18 @@ public sealed record ImportProcessingResult(ImportProcessingOutcome Outcome, Gui
 
 /// <summary>
 /// Orquesta la ejecución de un import bajo lease: reclamo SKIP LOCKED, almacenamiento por import,
+/// carga de referencias, carga por lotes con checkpoint (<c>bytes_committed</c>), agregación SQL,
 /// índices pre-swap, swap atómico de <c>active_import</c> y limpieza por DROP del import anterior.
 /// Si se pierde la conexión que sostiene el trabajo, aborta sin confirmar nada más: el lease
 /// queda sin heartbeat y otro worker puede reclamar el job al vencer (ADR-005).
 /// </summary>
 public sealed class ImportJobProcessor(
     IImportJobRepository repository,
+    IFileSourceFactory fileSourceFactory,
+    StagingCopyLoader stagingLoader,
+    ISituacionAggregationStrategy situacionStrategy,
     TimeProvider clock,
-    IOptions<Options.IngestionOptions> options)
+    IOptions<IngestionOptions> options)
 {
     public async Task<ImportProcessingResult> TryProcessNextAsync(string workerId, CancellationToken cancellationToken)
     {
@@ -40,9 +47,20 @@ public sealed class ImportJobProcessor(
         {
             await repository.CreateImportStorageAsync(job.Id, cancellationToken);
 
-            job.MarkAggregating();
-            await repository.SaveAsync(job, cancellationToken);
+            if (job.Status == ImportJobStatus.Loading)
+            {
+                await LoadReferenceTablesAsync(job, cancellationToken);
+
+                await using var source = fileSourceFactory.Create(job.Source);
+                await stagingLoader.LoadAsync(job, source, workerId, cancellationToken);
+
+                job.MarkAggregating();
+                await repository.SaveAsync(job, cancellationToken);
+            }
+
             await repository.RenewLeaseAsync(job.Id, workerId, clock.GetUtcNow(), cancellationToken);
+
+            await repository.AggregateImportAsync(job.Id, situacionStrategy.BuildAggregationExpression(), cancellationToken);
 
             await repository.CreateImportIndexesAsync(job.Id, cancellationToken);
 
@@ -60,5 +78,31 @@ public sealed class ImportJobProcessor(
         {
             return new ImportProcessingResult(ImportProcessingOutcome.AbortedByConnectionLoss, job.Id);
         }
+    }
+
+    private async Task LoadReferenceTablesAsync(ImportJob job, CancellationToken cancellationToken)
+    {
+        var ingestion = options.Value;
+        var entidades = ResolveReferencePath(job.Source, ingestion.EntidadesReferenceOverride, IngestionOptions.DefaultEntidadesReferenceFile);
+        var nombres = ResolveReferencePath(job.Source, ingestion.NombresReferenceOverride, IngestionOptions.DefaultNombresReferenceFile);
+
+        await using var entidadesSource = fileSourceFactory.Create(entidades);
+        var entidadesOpened = await entidadesSource.OpenAsync(0, cancellationToken);
+        await using var entidadesStream = entidadesOpened.Stream;
+
+        await using var nombresSource = fileSourceFactory.Create(nombres);
+        var nombresOpened = await nombresSource.OpenAsync(0, cancellationToken);
+        await using var nombresStream = nombresOpened.Stream;
+
+        await repository.LoadReferenceTablesAsync(entidadesStream, nombresStream, cancellationToken);
+    }
+
+    private static string ResolveReferencePath(string source, string? overridePath, string defaultFileName)
+    {
+        if (!string.IsNullOrWhiteSpace(overridePath))
+            return overridePath;
+
+        var directory = Path.GetDirectoryName(source);
+        return string.IsNullOrEmpty(directory) ? defaultFileName : Path.Combine(directory, defaultFileName);
     }
 }

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\services\ingestion\Bcra.Ingestion.Application\Bcra.Ingestion.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\services\ingestion\Bcra.Ingestion.Api\Bcra.Ingestion.Api.csproj" />
     <ProjectReference Include="..\..\..\src\services\ingestion\Bcra.Ingestion.Infrastructure\Bcra.Ingestion.Infrastructure.csproj" />
   </ItemGroup>
 
