@@ -19,6 +19,8 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IActiveImportResolver, ActiveImportResolver>();
+        services.AddScoped<IDeudorReadRepository, DapperDeudorReadRepository>();
+        services.AddScoped<IEntidadReadRepository, DapperEntidadReadRepository>();
         services.AddHealthChecks().AddCheck<ReadDatabaseHealthCheck>("read-database");
 
         return services;

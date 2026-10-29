@@ -55,6 +55,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "integration", "integration"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bcra.Ingestion.IntegrationTests", "tests\integration\Bcra.Ingestion.IntegrationTests\Bcra.Ingestion.IntegrationTests.csproj", "{2CA1F7E5-42C7-45FA-BC37-49B520A3B046}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bcra.Query.IntegrationTests", "tests\integration\Bcra.Query.IntegrationTests\Bcra.Query.IntegrationTests.csproj", "{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -132,6 +134,10 @@ Global
 		{2CA1F7E5-42C7-45FA-BC37-49B520A3B046}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2CA1F7E5-42C7-45FA-BC37-49B520A3B046}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2CA1F7E5-42C7-45FA-BC37-49B520A3B046}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F0A402F2-52B1-495E-8BDD-5916A54F42F6} = {D7B13D15-452D-496C-AA7C-DDDDFF95E4BF}
@@ -158,5 +164,6 @@ Global
 		{BA88F443-3AFB-4EE1-A9D4-5F9ED1B72E2E} = {B76EB987-1283-4D21-8C2F-A795E77A1D68}
 		{6C03A096-283F-4B0A-B341-FE1F885E47ED} = {2C8295E2-17B6-40AA-A850-F8C678961136}
 		{2CA1F7E5-42C7-45FA-BC37-49B520A3B046} = {6C03A096-283F-4B0A-B341-FE1F885E47ED}
+		{9C67F586-6B28-4F0E-9B59-1A78D1BB34AF} = {6C03A096-283F-4B0A-B341-FE1F885E47ED}
 	EndGlobalSection
 EndGlobal
