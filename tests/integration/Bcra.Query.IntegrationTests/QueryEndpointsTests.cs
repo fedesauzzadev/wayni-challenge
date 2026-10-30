@@ -71,7 +71,39 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         sums.Should().BeInDescendingOrder();
         sums.Should().BeEquivalentTo([1000.5m, 500.0m]);
 
+        deudores.EnumerateArray()
+            .Last()
+            .GetProperty("nombre").ValueKind.Should().Be(JsonValueKind.Null, "por defecto incluye deudores sin nombre");
+
         using var invalid = await client.GetAsync("/deudores?top=0");
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task WithActiveImport_GetTopDeudores_OmitirSinNombre_ExcludesUnnamedDeudores()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var omitted = await client.GetAsync("/deudores?omitirSinNombre=true");
+        omitted.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var filtered = await omitted.Content.ReadFromJsonAsync<JsonElement>();
+        filtered.GetArrayLength().Should().Be(1, "solo el deudor con nombre queda dentro del TopMax");
+        filtered[0].GetProperty("cuit").GetString().Should().Be("20123456784");
+        filtered[0].GetProperty("nombre").GetString().Should().Be("PEREZ JUAN CARLOS");
+
+        using var included = await client.GetAsync("/deudores?omitirSinNombre=false");
+        included.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var all = await included.Content.ReadFromJsonAsync<JsonElement>();
+        all.GetArrayLength().Should().Be(2, "TopMax=2 acota el top pedido");
+        all.EnumerateArray()
+            .Last()
+            .GetProperty("nombre").ValueKind.Should().Be(JsonValueKind.Null, "omitirSinNombre=false se comporta como el default");
+
+        using var invalid = await client.GetAsync("/deudores?omitirSinNombre=xyz");
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -105,9 +137,9 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var totales = await response.Content.ReadFromJsonAsync<JsonElement>();
-        totales.GetProperty("cantidadDeudores").GetInt64().Should().Be(3);
+        totales.GetProperty("cantidadDeudores").GetInt64().Should().Be(4);
         totales.GetProperty("cantidadEntidades").GetInt64().Should().Be(2);
-        totales.GetProperty("sumaTotalPrestamos").GetDecimal().Should().Be(1750.7m);
+        totales.GetProperty("sumaTotalPrestamos").GetDecimal().Should().Be(1850.7m);
 
         using var ready = await client.GetAsync("/health/ready");
         var body = await ready.Content.ReadAsStringAsync();

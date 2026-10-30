@@ -8,6 +8,7 @@ using Bcra.Query.Infrastructure;
 using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Logging;
 using Bcra.Shared.Infrastructure.Web;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
@@ -38,6 +39,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton<IExceptionHandler, BadRequestExceptionHandler>();
 builder.Services.AddOpenApi(options =>
 {
     options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1;
@@ -97,9 +99,9 @@ app.MapGet("/deudores/{cuit}", async (string cuit, GetDeudorByCuitHandler handle
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
-app.MapGet("/deudores", async (int? top, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
+app.MapGet("/deudores", async (int? top, bool? omitirSinNombre, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
     {
-        var result = await handler.HandleAsync(new GetTopDeudoresQuery(top), cancellationToken);
+        var result = await handler.HandleAsync(new GetTopDeudoresQuery(top, omitirSinNombre ?? false), cancellationToken);
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetTopDeudores")
@@ -131,5 +133,23 @@ app.MapGet("/totales", async (GetTotalesHandler handler, CancellationToken cance
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 app.Run();
+
+internal sealed class BadRequestExceptionHandler : IExceptionHandler
+{
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+    {
+        if (exception is not BadHttpRequestException badHttpRequest)
+        {
+            return false;
+        }
+
+        var statusCode = badHttpRequest.StatusCode is >= 400 and < 500
+            ? badHttpRequest.StatusCode
+            : StatusCodes.Status400BadRequest;
+        await Results.Problem(statusCode: statusCode, title: "Bad Request", detail: badHttpRequest.Message)
+            .ExecuteAsync(httpContext);
+        return true;
+    }
+}
 
 public sealed partial class Program;

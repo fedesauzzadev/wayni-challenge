@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Bcra.Query.Application.GetTopDeudores;
 
-public sealed record GetTopDeudoresQuery(int? Top);
+public sealed record GetTopDeudoresQuery(int? Top, bool OmitirSinNombre);
 
 public sealed class GetTopDeudoresHandler(
     IActiveImportResolver activeImportResolver,
@@ -28,7 +28,7 @@ public sealed class GetTopDeudoresHandler(
         }
 
         var count = Math.Min(query.Top ?? topMax, topMax);
-        var deudores = await repository.GetTopDeudoresAsync(importId.Value, count, cancellationToken);
+        var deudores = await repository.GetTopDeudoresAsync(importId.Value, count, query.OmitirSinNombre, cancellationToken);
         return Result.Ok<IReadOnlyList<GetDeudorByCuit.DeudorResumenResponse>>(
             deudores.Select(GetDeudorByCuit.GetDeudorByCuitHandler.ToResponse).ToList());
     }

@@ -44,7 +44,7 @@ public sealed class QueryApiFixture : IAsyncLifetime
             """);
     }
 
-    /// <summary>Publica un import activo con tres deudores y dos entidades conocidas.</summary>
+    /// <summary>Publica un import activo con cuatro deudores y dos entidades conocidas.</summary>
     public async Task SeedActiveImportAsync()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -59,7 +59,8 @@ public sealed class QueryApiFixture : IAsyncLifetime
             INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total) VALUES
             (@Id, '20123456784', 5, 1000.5),
             (@Id, '20987654321', 3, 500.0),
-            (@Id, '20000000009', 1, 250.2);
+            (@Id, '20000000009', 1, 250.2),
+            (@Id, '27000000008', 1, 100.0);
 
             INSERT INTO entidad_agg (import_id, codigo_entidad, suma_total) VALUES
             (@Id, 266, 900.5),

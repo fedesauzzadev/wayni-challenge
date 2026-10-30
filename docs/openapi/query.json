@@ -83,6 +83,13 @@
               ],
               "format": "int32"
             }
+          },
+          {
+            "name": "omitirSinNombre",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

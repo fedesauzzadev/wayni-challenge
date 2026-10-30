@@ -33,15 +33,16 @@ public sealed class DapperDeudorReadRepository(IReadOnlyDbConnectionFactory conn
         return row?.ToReadModel();
     }
 
-    public async Task<IReadOnlyList<DeudorResumen>> GetTopDeudoresAsync(Guid importId, int count, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<DeudorResumen>> GetTopDeudoresAsync(Guid importId, int count, bool omitirSinNombre, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        var nombreFilter = omitirSinNombre ? " AND n.nombre IS NOT NULL" : string.Empty;
         var command = new CommandDefinition(
             $"""
             SELECT {SelectColumns}
             FROM deudor_agg d
             LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
-            WHERE d.import_id = @ImportId
+            WHERE d.import_id = @ImportId{nombreFilter}
             ORDER BY d.suma_total DESC, d.cuit ASC
             LIMIT @Count
             """,
