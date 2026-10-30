@@ -39,7 +39,10 @@ services:
   ingestion-api:
     build:
       context: .
-      dockerfile: src/services/ingestion/Bcra.Ingestion.Api/Dockerfile
+      dockerfile: src/services/Dockerfile
+      args:
+        SERVICE: ingestion
+        PROJECT: Bcra.Ingestion
     container_name: bcra-ingestion-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
@@ -67,7 +70,10 @@ services:
   query-api:
     build:
       context: .
-      dockerfile: src/services/query/Bcra.Query.Api/Dockerfile
+      dockerfile: src/services/Dockerfile
+      args:
+        SERVICE: query
+        PROJECT: Bcra.Query
     container_name: bcra-query-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
@@ -86,7 +92,10 @@ services:
   notifier-api:
     build:
       context: .
-      dockerfile: src/services/notifier/Bcra.Notifier.Api/Dockerfile
+      dockerfile: src/services/Dockerfile
+      args:
+        SERVICE: notifier
+        PROJECT: Bcra.Notifier
     container_name: bcra-notifier-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
