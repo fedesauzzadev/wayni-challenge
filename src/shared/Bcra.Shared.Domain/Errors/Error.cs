@@ -4,7 +4,6 @@ public enum ErrorType
 {
     Validation,
     NotFound,
-    Conflict,
     Unavailable,
     Failure
 }
@@ -26,7 +25,6 @@ public sealed record Error
 
     public static Error Validation(string code, string description) => new(code, description, ErrorType.Validation);
     public static Error NotFound(string code, string description) => new(code, description, ErrorType.NotFound);
-    public static Error Conflict(string code, string description) => new(code, description, ErrorType.Conflict);
     public static Error Unavailable(string code, string description) => new(code, description, ErrorType.Unavailable);
     public static Error Failure(string code, string description) => new(code, description, ErrorType.Failure);
 

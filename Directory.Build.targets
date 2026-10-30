@@ -1,0 +1,21 @@
+<Project>
+
+  <!-- OpenAPI: parametrizado por servicio. Un proyecto Api participa definiendo
+       <OpenApiDocsFile>{servicio}.json</OpenApiDocsFile>; el documento generado se
+       copia a docs/openapi/ tras GenerateOpenApiDocuments (equivale al target que
+       estaba duplicado inline en los 3 csproj de Api). -->
+  <PropertyGroup Condition="'$(OpenApiDocsFile)' != ''">
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)openapi\</OpenApiDocumentsDirectory>
+  </PropertyGroup>
+
+  <Target Name="CopyOpenApiDocumentToDocs"
+          AfterTargets="GenerateOpenApiDocuments"
+          Condition="'$(OpenApiDocsFile)' != ''"
+          Inputs="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
+          Outputs="$(MSBuildThisFileDirectory)docs\openapi\$(OpenApiDocsFile)">
+    <Copy SourceFiles="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
+          DestinationFiles="$(MSBuildThisFileDirectory)docs\openapi\$(OpenApiDocsFile)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

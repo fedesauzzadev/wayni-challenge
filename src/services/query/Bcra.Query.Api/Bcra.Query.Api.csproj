@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)openapi\</OpenApiDocumentsDirectory>
+    <OpenApiDocsFile>query.json</OpenApiDocsFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,13 +16,5 @@
     <ProjectReference Include="..\Bcra.Query.Application\Bcra.Query.Application.csproj" />
     <ProjectReference Include="..\Bcra.Query.Infrastructure\Bcra.Query.Infrastructure.csproj" />
   </ItemGroup>
-  <Target Name="CopyOpenApiDocumentToDocs"
-          AfterTargets="GenerateOpenApiDocuments"
-          Inputs="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          Outputs="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\query.json">
-    <Copy SourceFiles="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          DestinationFiles="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\query.json"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

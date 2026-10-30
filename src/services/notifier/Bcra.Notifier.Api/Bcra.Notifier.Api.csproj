@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)openapi\</OpenApiDocumentsDirectory>
+    <OpenApiDocsFile>notifier.json</OpenApiDocsFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,13 +16,5 @@
     <ProjectReference Include="..\Bcra.Notifier.Application\Bcra.Notifier.Application.csproj" />
     <ProjectReference Include="..\Bcra.Notifier.Infrastructure\Bcra.Notifier.Infrastructure.csproj" />
   </ItemGroup>
-  <Target Name="CopyOpenApiDocumentToDocs"
-          AfterTargets="GenerateOpenApiDocuments"
-          Inputs="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          Outputs="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\notifier.json">
-    <Copy SourceFiles="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          DestinationFiles="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\notifier.json"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

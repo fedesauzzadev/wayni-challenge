@@ -1,8 +1,8 @@
 using Bcra.Query.Application.Contracts;
 using Bcra.Query.Domain.Ports;
+using Bcra.Shared.Domain;
 using Bcra.Shared.Domain.Errors;
 using Bcra.Shared.Domain.Results;
-using Bcra.Shared.Domain.ValueObjects;
 
 namespace Bcra.Query.Application.GetDeudorByCuit;
 
@@ -12,8 +12,7 @@ public sealed class GetDeudorByCuitHandler(IActiveImportResolver activeImportRes
 {
     public async Task<Result<DeudorResumenResponse>> HandleAsync(GetDeudorByCuitQuery query, CancellationToken cancellationToken)
     {
-        var digits = new string(query.Cuit.Where(char.IsDigit).ToArray());
-        if (!Cuit.IsValid(digits))
+        if (!CuitParser.TryNormalize(query.Cuit, out var cuit))
         {
             return Result.Fail<DeudorResumenResponse>(
                 Error.Validation("Deudor.InvalidCuit", $"'{query.Cuit}' is not a valid CUIT."));
@@ -25,10 +24,10 @@ public sealed class GetDeudorByCuitHandler(IActiveImportResolver activeImportRes
             return Result.Fail<DeudorResumenResponse>(activeImport.Error);
         }
 
-        var deudor = await repository.GetDeudorAsync(activeImport.Value, Cuit.FromTrusted(digits), cancellationToken);
+        var deudor = await repository.GetDeudorAsync(activeImport.Value, cuit, cancellationToken);
         return deudor is null
             ? Result.Fail<DeudorResumenResponse>(
-                Error.NotFound("Deudor.NotFound", $"Deudor '{digits}' was not found in the active import."))
+                Error.NotFound("Deudor.NotFound", $"Deudor '{cuit}' was not found in the active import."))
             : Result.Ok(deudor.ToResponse());
     }
 }

@@ -43,6 +43,33 @@ public class CuitParserTests
     {
         CuitParser.Format(Cuit.FromTrusted("27962062194")).Should().Be("27-96206219-4");
     }
+
+    [Theory]
+    [InlineData("20003905528")]
+    [InlineData("20-00390552-8")]
+    [InlineData("  20003905528 ")]
+    [InlineData("20 00390552 8")]
+    public void TryNormalize_StripsNonDigits_AndSucceedsWithElevenDigits(string value)
+    {
+        var normalized = CuitParser.TryNormalize(value, out var cuit);
+
+        normalized.Should().BeTrue();
+        cuit.Value.Should().Be("20003905528");
+    }
+
+    [Theory]
+    [InlineData("2000390552")]        // menos de 11 dígitos
+    [InlineData("200039055288")]      // más de 11 dígitos
+    [InlineData("20-0039055-288")]    // más de 11 dígitos tras strip
+    [InlineData("abcdefghijklm")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("--")]
+    public void TryNormalize_WithoutExactlyElevenDigits_Fails(string value)
+    {
+        CuitParser.TryNormalize(value, out var cuit).Should().BeFalse();
+        cuit.Value.Should().BeNull();
+    }
 }
 
 public class CuitTests

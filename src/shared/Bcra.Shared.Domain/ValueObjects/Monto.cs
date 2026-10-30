@@ -2,9 +2,6 @@ namespace Bcra.Shared.Domain.ValueObjects;
 
 public readonly record struct Monto
 {
-    public const int Precision = 15;
-    public const int Scale = 1;
-
     /// <summary>Máximo valor representable: 15 dígitos enteros (10^15 - 1), pre-calculado.</summary>
     private static readonly decimal MaxValue = 999_999_999_999_999m;
 

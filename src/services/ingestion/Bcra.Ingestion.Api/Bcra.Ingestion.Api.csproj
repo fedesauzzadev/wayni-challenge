@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)openapi\</OpenApiDocumentsDirectory>
+    <OpenApiDocsFile>ingestion.json</OpenApiDocsFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,13 +16,5 @@
     <ProjectReference Include="..\Bcra.Ingestion.Application\Bcra.Ingestion.Application.csproj" />
     <ProjectReference Include="..\Bcra.Ingestion.Infrastructure\Bcra.Ingestion.Infrastructure.csproj" />
   </ItemGroup>
-  <Target Name="CopyOpenApiDocumentToDocs"
-          AfterTargets="GenerateOpenApiDocuments"
-          Inputs="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          Outputs="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\ingestion.json">
-    <Copy SourceFiles="$(OpenApiDocumentsDirectory)$(MSBuildProjectName).json"
-          DestinationFiles="$(MSBuildThisFileDirectory)..\..\..\..\docs\openapi\ingestion.json"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

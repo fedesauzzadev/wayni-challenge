@@ -31,6 +31,12 @@ public sealed class ImportJob
 
     public bool IsActive => Status is ImportJobStatus.Loading or ImportJobStatus.Aggregating;
 
+    /// <summary>
+    /// Spec ejecutable de la semántica de lease de ADR-005 (reclamo SKIP LOCKED + heartbeat +
+    /// takeover por vencimiento). El reclamo real ocurre en SQL (<c>ClaimNextAsync</c>); estos
+    /// métodos codifican las mismas reglas de decisión en el dominio y se verifican en
+    /// <c>ImportJobTests</c> — no son código muerto: son la documentación viva del contrato.
+    /// </summary>
     public bool IsClaimable(DateTimeOffset utcNow, TimeSpan leaseTimeout) =>
         Status == ImportJobStatus.Pending
         || HasExpiredLease(utcNow, leaseTimeout);
