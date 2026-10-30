@@ -37,30 +37,36 @@ public sealed class StagingCopyLoader(
         var batch = new List<ParsedDebtRecord>(Math.Min(batchSize, MaxCopyBatchSize));
         var batchValidLines = 0L;
         var batchRejectedLines = 0L;
+        var batchSkippedControlLines = 0L;
         var reader = new OffsetLineReader(stream, job.BytesCommitted);
 
         while (await reader.ReadNextAsync(cancellationToken) is { } line)
         {
-            if (DeudoresRecordParser.TryParse(line.Line.Span, out var record))
+            switch (DeudoresRecordParser.Classify(line.Line.Span, out var record))
             {
-                batch.Add(record);
-                batchValidLines++;
-            }
-            else
-            {
-                batchRejectedLines++;
+                case DeudoresLineKind.Record:
+                    batch.Add(record!);
+                    batchValidLines++;
+                    break;
+                case DeudoresLineKind.ControlRecord:
+                    batchSkippedControlLines++;
+                    break;
+                default:
+                    batchRejectedLines++;
+                    break;
             }
 
             if (batch.Count >= batchSize)
             {
-                await FlushAsync(job, leaseOwner, batch, line.NextOffset, batchValidLines, batchRejectedLines, cancellationToken);
+                await FlushAsync(job, leaseOwner, batch, line.NextOffset, batchValidLines, batchRejectedLines, batchSkippedControlLines, cancellationToken);
                 batchValidLines = 0;
                 batchRejectedLines = 0;
+                batchSkippedControlLines = 0;
             }
         }
 
-        if (batch.Count > 0 || batchValidLines + batchRejectedLines > 0)
-            await FlushAsync(job, leaseOwner, batch, reader.Position, batchValidLines, batchRejectedLines, cancellationToken);
+        if (batch.Count > 0 || batchValidLines + batchRejectedLines + batchSkippedControlLines > 0)
+            await FlushAsync(job, leaseOwner, batch, reader.Position, batchValidLines, batchRejectedLines, batchSkippedControlLines, cancellationToken);
     }
 
     private async Task FlushAsync(
@@ -70,16 +76,17 @@ public sealed class StagingCopyLoader(
         long nextOffset,
         long validLines,
         long rejectedLines,
+        long skippedControlLines,
         CancellationToken cancellationToken)
     {
-        job.CommitBatch(nextOffset, validLines, rejectedLines);
+        job.CommitBatch(nextOffset, validLines, rejectedLines, skippedControlLines);
 
         await batchCommitter.CommitBatchAsync(
             job.Id,
             batch,
             new StagingBatchCheckpoint(
                 job.BytesCommitted, job.LinesProcessed, job.LinesRejected,
-                leaseOwner, clock.GetUtcNow(), job.SourceEtag, job.Size),
+                leaseOwner, clock.GetUtcNow(), job.SourceEtag, job.Size, job.LinesSkippedControl),
             cancellationToken);
         batch.Clear();
 

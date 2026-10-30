@@ -41,6 +41,7 @@ public sealed class ImportCompletedEventTests(PostgresFixture fixture)
         importCompleted.Periodo.Should().Be(202311);
         importCompleted.LinesProcessed.Should().Be(sample.ValidLines);
         importCompleted.LinesRejected.Should().Be(sample.RejectedLines);
+        importCompleted.LinesSkippedControl.Should().Be(sample.SkippedControlLines);
         importCompleted.DurationMs.Should().BeGreaterThanOrEqualTo(0);
         importCompleted.CompletedAtUtc.Should().BeOnOrAfter(DateTime.UtcNow.AddMinutes(-5));
     }

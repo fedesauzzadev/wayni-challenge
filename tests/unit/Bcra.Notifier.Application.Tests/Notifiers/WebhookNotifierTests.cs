@@ -16,6 +16,7 @@ public sealed class WebhookNotifierTests
         202311,
         10,
         0,
+        285,
         12.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 

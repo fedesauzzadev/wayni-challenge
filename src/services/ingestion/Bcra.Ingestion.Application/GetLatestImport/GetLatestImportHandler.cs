@@ -16,6 +16,7 @@ public sealed record LatestImportResponse(
     long BytesCommitted,
     long LinesProcessed,
     long LinesRejected,
+    long LinesSkippedControl,
     double? LoadingProgressPercent,
     double? DurationMs,
     DateTimeOffset CreatedAtUtc,
@@ -31,6 +32,7 @@ public sealed record LatestImportResponse(
         job.BytesCommitted,
         job.LinesProcessed,
         job.LinesRejected,
+        job.LinesSkippedControl,
         job.Size > 0 ? Math.Round(job.BytesCommitted * 100.0 / job.Size, 2) : null,
         job.StartedAtUtc is { } started && job.FinishedAtUtc is { } finished
             ? Math.Round((finished - started).TotalMilliseconds, 0)

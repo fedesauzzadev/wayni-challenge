@@ -16,6 +16,7 @@ public sealed record ImportStatusResponse(
     long BytesCommitted,
     long LinesProcessed,
     long LinesRejected,
+    long LinesSkippedControl,
     double? LoadingProgressPercent,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? FinishedAtUtc)
@@ -29,6 +30,7 @@ public sealed record ImportStatusResponse(
         job.BytesCommitted,
         job.LinesProcessed,
         job.LinesRejected,
+        job.LinesSkippedControl,
         job.Size > 0 ? Math.Round(job.BytesCommitted * 100.0 / job.Size, 2) : null,
         job.StartedAtUtc,
         job.FinishedAtUtc);

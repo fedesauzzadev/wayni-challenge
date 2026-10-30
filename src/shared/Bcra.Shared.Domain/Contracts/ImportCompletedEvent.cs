@@ -6,5 +6,6 @@ public sealed record ImportCompletedEvent(
     int? Periodo,
     long LinesProcessed,
     long LinesRejected,
+    long LinesSkippedControl,
     double DurationMs,
     DateTime CompletedAtUtc);

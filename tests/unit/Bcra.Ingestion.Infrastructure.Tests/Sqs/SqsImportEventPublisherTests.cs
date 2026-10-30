@@ -18,6 +18,7 @@ public sealed class SqsImportEventPublisherTests
         202311,
         10,
         1,
+        285,
         12.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 
@@ -49,6 +50,7 @@ public sealed class SqsImportEventPublisherTests
                 request.QueueUrl == "http://localstack:4566/000000000000/import-completed"
                 && request.MessageBody.Contains($"\"jobId\":\"{importCompleted.JobId}\"")
                 && request.MessageBody.Contains("\"linesProcessed\":10")
+                && request.MessageBody.Contains("\"linesSkippedControl\":285")
                 && request.MessageBody.Contains("\"durationMs\":12.5")),
             Arg.Any<CancellationToken>());
     }

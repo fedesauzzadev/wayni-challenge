@@ -21,6 +21,7 @@ public sealed class ImportCompletedMessageHandlerTests
         202311,
         1_000,
         3,
+        285,
         4_321.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 

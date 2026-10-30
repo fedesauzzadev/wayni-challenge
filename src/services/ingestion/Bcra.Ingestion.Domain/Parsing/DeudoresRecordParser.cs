@@ -5,6 +5,23 @@ namespace Bcra.Ingestion.Domain.Parsing;
 
 public sealed record ParsedDebtRecord(int Entidad, int Periodo, string Cuit, short Situacion, decimal Monto);
 
+/// <summary>Clasificación de una línea del archivo de deudores.</summary>
+public enum DeudoresLineKind
+{
+    /// <summary>Registro de deudor con CUIT (marcador "11") y todos los campos válidos.</summary>
+    Record,
+
+    /// <summary>
+    /// Línea de ancho correcto que NO es un registro de deudor con CUIT (marcador ≠ "11":
+    /// registros de control 98/99, encabezados/cierres de lote del BCRA, otros tipos de
+    /// identificación). Se descarta deliberadamente: no es un error del archivo.
+    /// </summary>
+    ControlRecord,
+
+    /// <summary>Línea malformada (largo incorrecto o campos inválidos): rechazo genuino.</summary>
+    Invalid,
+}
+
 public sealed class DeudoresRecordParser
 {
     public const int LineLength = 171;
@@ -21,29 +38,37 @@ public sealed class DeudoresRecordParser
     /// <summary>Código de entidad BCRA: campo de 5 dígitos (Maeent.txt real llega hasta 72.622).</summary>
     private const int MaxEntidad = 99_999;
 
-    public static bool TryParse(ReadOnlySpan<byte> line, [NotNullWhen(true)] out ParsedDebtRecord? record)
+    public static bool TryParse(ReadOnlySpan<byte> line, [NotNullWhen(true)] out ParsedDebtRecord? record) =>
+        Classify(line, out record) == DeudoresLineKind.Record;
+
+    /// <summary>
+    /// Distingue registro de deudor válido (<see cref="DeudoresLineKind.Record"/>) de registro
+    /// de control descartado a propósito (<see cref="DeudoresLineKind.ControlRecord"/>) y de
+    /// línea malformada (<see cref="DeudoresLineKind.Invalid"/>).
+    /// </summary>
+    public static DeudoresLineKind Classify(ReadOnlySpan<byte> line, [NotNullWhen(true)] out ParsedDebtRecord? record)
     {
         record = null;
         if (line.Length != LineLength)
-            return false;
+            return DeudoresLineKind.Invalid;
         if (line[RecordMarkerOffset] != RecordMarkerDigit || line[RecordMarkerOffset + 1] != RecordMarkerDigit)
-            return false;
+            return DeudoresLineKind.ControlRecord;
         if (!TryParseBounded(line[..5], MaxEntidad, out var entidad))
-            return false;
+            return DeudoresLineKind.Invalid;
         if (!TryParseBounded(line[5..11], 9_999_999, out var periodo))
-            return false;
+            return DeudoresLineKind.Invalid;
 
         var cuit = line[13..24].Trim(Space);
         if (cuit.IsEmpty || cuit.Length > 11 || !AllDigits(cuit))
-            return false;
+            return DeudoresLineKind.Invalid;
 
         if (!TryParseBounded(line[27..29], short.MaxValue, out var situacion))
-            return false;
+            return DeudoresLineKind.Invalid;
         if (!TryParseMonto(line[29..41], out var monto))
-            return false;
+            return DeudoresLineKind.Invalid;
 
         record = new ParsedDebtRecord(entidad, periodo, Encoding.Latin1.GetString(cuit), (short)situacion, monto);
-        return true;
+        return DeudoresLineKind.Record;
     }
 
     private static bool AllDigits(ReadOnlySpan<byte> field)

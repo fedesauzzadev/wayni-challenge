@@ -89,6 +89,31 @@ public sealed class DeudoresRecordParserTests
     }
 
     [Fact]
+    public void ControlMarkers98And99_AreControlRecords_NotInvalidLines()
+    {
+        // Los 285 "rechazos" del archivo real: registros de control 98/99 del BCRA, descartados
+        // deliberadamente — la clasificación los distingue de las líneas malformadas.
+        DeudoresRecordParser.Classify(Line(tipoIdentificacion: "98"), out var record98)
+            .Should().Be(DeudoresLineKind.ControlRecord);
+        DeudoresRecordParser.Classify(Line(tipoIdentificacion: "99"), out var record99)
+            .Should().Be(DeudoresLineKind.ControlRecord);
+        DeudoresRecordParser.Classify(Line(tipoIdentificacion: "96"), out _)
+            .Should().Be(DeudoresLineKind.ControlRecord, "96 (DNI/otro doc) tampoco es registro CUIT: descarte, no error");
+
+        record98.Should().BeNull();
+        record99.Should().BeNull();
+    }
+
+    [Fact]
+    public void MalformedLines_AreInvalid_EvenWithControlMarker()
+    {
+        DeudoresRecordParser.Classify(Encoding.Latin1.GetBytes(new string('7', 170)), out _)
+            .Should().Be(DeudoresLineKind.Invalid);
+        DeudoresRecordParser.Classify(Line(monto: "XX,0"), out _)
+            .Should().Be(DeudoresLineKind.Invalid);
+    }
+
+    [Fact]
     public void NonNumericCuit_IsRejected()
     {
         DeudoresRecordParser.TryParse(Line(cuit: "20003X05528"), out _).Should().BeFalse();

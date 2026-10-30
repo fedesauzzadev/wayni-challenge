@@ -8,7 +8,7 @@ namespace Bcra.Shared.Domain.Tests.Contracts;
 public class ImportCompletedEventJsonTests
 {
     private const string FixtureJson =
-        """{"jobId":"0f2f1d0e-8b8a-4c3d-9e7f-2a1b0c5d4e6f","source":"/data/deudores.txt","periodo":202311,"linesProcessed":1000,"linesRejected":3,"durationMs":4321.5,"completedAtUtc":"2026-10-29T12:00:00Z"}""";
+        """{"jobId":"0f2f1d0e-8b8a-4c3d-9e7f-2a1b0c5d4e6f","source":"/data/deudores.txt","periodo":202311,"linesProcessed":1000,"linesRejected":3,"linesSkippedControl":285,"durationMs":4321.5,"completedAtUtc":"2026-10-29T12:00:00Z"}""";
 
     private static readonly JsonSerializerOptions WebDefaultsItReplaces = new(JsonSerializerDefaults.Web);
 
@@ -18,6 +18,7 @@ public class ImportCompletedEventJsonTests
         202311,
         1_000,
         3,
+        285,
         4_321.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 

@@ -254,7 +254,11 @@ export function ArchivoPage() {
           icon={HardDriveUpload}
           label="Líneas procesadas"
           value={latest ? formatNumber(latest.linesProcessed) : "—"}
-          hint={latest ? `${formatNumber(latest.linesRejected)} rechazadas` : undefined}
+          hint={
+            latest
+              ? `${formatNumber(latest.linesRejected)} rechazadas · ${formatNumber(latest.linesSkippedControl)} de control (98/99)`
+              : undefined
+          }
           loading={latestQuery.isLoading}
         />
         <StatCard
@@ -427,7 +431,8 @@ export function ArchivoPage() {
               </Detail>
               <Detail label="Tamaño">{formatBytes(latest.size)}</Detail>
               <Detail label="Líneas">{formatNumber(latest.linesProcessed)}</Detail>
-              <Detail label="Rechazadas">{formatNumber(latest.linesRejected)}</Detail>
+              <Detail label="Rechazadas (malformadas)">{formatNumber(latest.linesRejected)}</Detail>
+              <Detail label="De control (98/99, se descartan)">{formatNumber(latest.linesSkippedControl)}</Detail>
               <Detail label="Inicio">{formatDateTime(latest.startedAtUtc)}</Detail>
               <Detail label="Fin">{formatDateTime(latest.finishedAtUtc)}</Detail>
             </dl>

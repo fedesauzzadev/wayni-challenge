@@ -16,4 +16,5 @@ public sealed record ImportJobSnapshot(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? FinishedAtUtc,
-    string? SourceEtag = null);
+    string? SourceEtag = null,
+    long LinesSkippedControl = 0);

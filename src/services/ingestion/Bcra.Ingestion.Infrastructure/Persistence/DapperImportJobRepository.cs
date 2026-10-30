@@ -16,7 +16,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     private const string UniqueViolationSqlState = "23505";
     private const string SelectColumns = """
         id, source, etag, source_etag, size, periodo, status, bytes_committed, lines_processed, lines_rejected,
-        lease_owner, heartbeat_at, created_at, started_at, finished_at
+        lines_skipped_control, lease_owner, heartbeat_at, created_at, started_at, finished_at
         """;
 
     /// <summary>Sin timeout de comando: las fases largas de agregación/índices corren sin límite.</summary>
@@ -98,6 +98,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                 bytes_committed = @BytesCommitted,
                 lines_processed = @LinesProcessed,
                 lines_rejected = @LinesRejected,
+                lines_skipped_control = @LinesSkippedControl,
                 lease_owner = @LeaseOwner,
                 heartbeat_at = @HeartbeatAt,
                 started_at = @StartedAt,
@@ -115,6 +116,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                 job.BytesCommitted,
                 job.LinesProcessed,
                 job.LinesRejected,
+                job.LinesSkippedControl,
                 job.LeaseOwner,
                 job.HeartbeatAt,
                 StartedAt = job.StartedAtUtc,
@@ -152,7 +154,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                         heartbeat_at = @Now
                     WHERE id IN (SELECT id FROM candidate)
                     RETURNING id, source, etag, source_etag, size, periodo, status, bytes_committed, lines_processed,
-                              lines_rejected, lease_owner, heartbeat_at, created_at, started_at, finished_at
+                              lines_rejected, lines_skipped_control, lease_owner, heartbeat_at, created_at, started_at, finished_at
                 )
                 SELECT * FROM claimed;
                 """,
@@ -212,6 +214,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                     bytes_committed = @BytesCommitted,
                     lines_processed = @LinesProcessed,
                     lines_rejected = @LinesRejected,
+                    lines_skipped_control = @LinesSkippedControl,
                     heartbeat_at = @HeartbeatAt
                 WHERE id = @Id AND lease_owner = @LeaseOwner AND status = 'Loading';
                 """,
@@ -221,6 +224,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                     checkpoint.BytesCommitted,
                     checkpoint.LinesProcessed,
                     checkpoint.LinesRejected,
+                    checkpoint.LinesSkippedControl,
                     checkpoint.LeaseOwner,
                     checkpoint.HeartbeatAt,
                     checkpoint.SourceEtag,
@@ -456,6 +460,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         public long BytesCommitted { get; set; }
         public long LinesProcessed { get; set; }
         public long LinesRejected { get; set; }
+        public long LinesSkippedControl { get; set; }
         public string? LeaseOwner { get; set; }
         public DateTimeOffset? HeartbeatAt { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
@@ -467,6 +472,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                 Id, Source, Etag, Size, Periodo,
                 Enum.Parse<ImportJobStatus>(Status),
                 BytesCommitted, LinesProcessed, LinesRejected,
-                LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt, SourceEtag));
+                LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt, SourceEtag, LinesSkippedControl));
     }
 }

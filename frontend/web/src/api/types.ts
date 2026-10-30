@@ -7,6 +7,7 @@ export interface ImportStatus {
   bytesCommitted: number;
   linesProcessed: number;
   linesRejected: number;
+  linesSkippedControl: number;
   loadingProgressPercent: number | null;
   startedAtUtc: string | null;
   finishedAtUtc: string | null;
@@ -21,6 +22,7 @@ export interface LatestImport {
   bytesCommitted: number;
   linesProcessed: number;
   linesRejected: number;
+  linesSkippedControl: number;
   loadingProgressPercent: number | null;
   durationMs: number | null;
   createdAtUtc: string;

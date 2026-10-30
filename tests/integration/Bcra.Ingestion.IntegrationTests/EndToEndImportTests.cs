@@ -60,6 +60,7 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
             completed!.Status.Should().Be(ImportJobStatus.Completed);
             completed.LinesProcessed.Should().Be(sample.ValidLines);
             completed.LinesRejected.Should().Be(sample.RejectedLines);
+            completed.LinesSkippedControl.Should().Be(sample.SkippedControlLines, "los registros 98/99 se reportan aparte, no como rechazados");
             completed.BytesCommitted.Should().Be(sample.DeudoresLength);
 
             await using var connection = new NpgsqlConnection(fixture.ConnectionString);
@@ -152,6 +153,7 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
         var final = await repository.GetByIdAsync(job.Id, CancellationToken.None);
         final!.LinesProcessed.Should().Be(sample.ValidLines);
         final.LinesRejected.Should().Be(sample.RejectedLines);
+        final.LinesSkippedControl.Should().Be(sample.SkippedControlLines);
         final.BytesCommitted.Should().Be(sample.DeudoresLength);
 
         await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
@@ -251,6 +253,7 @@ internal static class SampleFiles
         long DeudoresLength,
         int ValidLines,
         int RejectedLines,
+        int SkippedControlLines,
         IReadOnlyDictionary<string, (short SituacionMaxima, decimal Suma)> PorCuit,
         IReadOnlyDictionary<int, decimal> PorEntidad);
 
@@ -258,6 +261,7 @@ internal static class SampleFiles
         string directory,
         int validLines,
         int rejectedLines = 0,
+        int skippedControlLines = 2,
         int seed = 20231101,
         IReadOnlyList<(string Cuit, int Entidad, short Situacion, decimal Monto)>? fixedLines = null)
     {
@@ -286,14 +290,17 @@ internal static class SampleFiles
                 Situaciones[rand.Next(Situaciones.Length)],
                 rand.Next(0, 5_000_000) / 10m);
 
+        // Registros de control 98/99 (ancho correcto, marcador ≠ "11"): descartados a propósito,
+        // como los 285 del archivo real del BCRA.
+        for (var i = 0; i < skippedControlLines; i++)
+            content.Append(BuildLine(7, cuits[0], 1, "1,0", tipoIdentificacion: i % 2 == 0 ? "98" : "99")).Append('\n');
+
+        // Rechazos genuinos: líneas malformadas.
         for (var i = 0; i < rejectedLines; i++)
         {
-            switch (i % 3)
+            switch (i % 2)
             {
                 case 0:
-                    content.Append(BuildLine(7, cuits[0], 1, "1,0", tipoIdentificacion: "96")).Append('\n');
-                    break;
-                case 1:
                     content.Append(new string('7', 100)).Append('\n');
                     break;
                 default:
@@ -321,6 +328,7 @@ internal static class SampleFiles
             new FileInfo(deudoresPath).Length,
             validLines + (fixedLines?.Count ?? 0),
             rejectedLines,
+            skippedControlLines,
             porCuit,
             porEntidad);
     }

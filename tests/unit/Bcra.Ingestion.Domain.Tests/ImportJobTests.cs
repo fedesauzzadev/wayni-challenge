@@ -95,12 +95,13 @@ public class ImportJobTests
         job.MarkLoading(Now);
         job.SetSourceMetadata(1_000, "etag-1");
 
-        job.CommitBatch(500, 200_000, 12);
-        job.CommitBatch(900, 150_000, 3);
+        job.CommitBatch(500, 200_000, 12, 4);
+        job.CommitBatch(900, 150_000, 3, 1);
 
         job.BytesCommitted.Should().Be(900);
         job.LinesProcessed.Should().Be(350_000);
         job.LinesRejected.Should().Be(15);
+        job.LinesSkippedControl.Should().Be(5);
     }
 
     [Fact]
@@ -109,9 +110,9 @@ public class ImportJobTests
         var job = NewJob();
         job.MarkLoading(Now);
         job.SetSourceMetadata(1_000, null);
-        job.CommitBatch(500, 1, 0);
+        job.CommitBatch(500, 1, 0, 0);
 
-        var act = () => job.CommitBatch(400, 1, 0);
+        var act = () => job.CommitBatch(400, 1, 0, 0);
 
         act.Should().Throw<InvalidOperationException>();
     }
@@ -121,7 +122,7 @@ public class ImportJobTests
     {
         var job = NewJob();
 
-        var act = () => job.CommitBatch(100, 1, 0);
+        var act = () => job.CommitBatch(100, 1, 0, 0);
 
         act.Should().Throw<InvalidOperationException>();
     }
@@ -268,13 +269,14 @@ public class ImportJobTests
     {
         var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag-1", 1_000, 202311,
-            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null));
+            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null, SourceEtag: null, LinesSkippedControl: 5));
 
-        job.CommitBatch(1_000, 4, 1);
+        job.CommitBatch(1_000, 4, 1, 2);
 
         job.BytesCommitted.Should().Be(1_000);
         job.LinesProcessed.Should().Be(14, "las líneas nuevas se suman al checkpoint previo");
         job.LinesRejected.Should().Be(3);
+        job.LinesSkippedControl.Should().Be(7, "las de control descartadas también acumulan desde el checkpoint");
     }
 
     [Fact]

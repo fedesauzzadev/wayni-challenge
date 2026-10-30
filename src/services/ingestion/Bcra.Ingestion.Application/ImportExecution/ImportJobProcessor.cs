@@ -169,6 +169,7 @@ public sealed partial class ImportJobProcessor(
                     job.Periodo,
                     job.LinesProcessed,
                     job.LinesRejected,
+                    job.LinesSkippedControl,
                     durationMs,
                     completedAt.UtcDateTime),
                 cancellationToken);

@@ -82,6 +82,7 @@ public sealed class ResumptionTests(PostgresFixture fixture)
         final!.Status.Should().Be(ImportJobStatus.Completed);
         final.LinesProcessed.Should().Be(sample.ValidLines);
         final.LinesRejected.Should().Be(sample.RejectedLines);
+        final.LinesSkippedControl.Should().Be(sample.SkippedControlLines, "las de control descartadas también sobreviven la reanudación");
         final.BytesCommitted.Should().Be(sample.DeudoresLength);
 
         await using (var connection = new NpgsqlConnection(fixture.ConnectionString))

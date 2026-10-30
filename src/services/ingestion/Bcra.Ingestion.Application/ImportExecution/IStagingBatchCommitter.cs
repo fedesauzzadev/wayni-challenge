@@ -14,7 +14,8 @@ public sealed record StagingBatchCheckpoint(
     string LeaseOwner,
     DateTimeOffset HeartbeatAt,
     string? SourceEtag,
-    long Size);
+    long Size,
+    long LinesSkippedControl = 0);
 
 public interface IStagingBatchCommitter
 {

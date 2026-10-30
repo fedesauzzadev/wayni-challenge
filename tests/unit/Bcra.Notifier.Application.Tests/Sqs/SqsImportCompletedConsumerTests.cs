@@ -95,6 +95,7 @@ public sealed class SqsImportCompletedConsumerTests
                 202311,
                 10,
                 0,
+                285,
                 12.5,
                 new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc)),
             ImportCompletedEventJson.Options);

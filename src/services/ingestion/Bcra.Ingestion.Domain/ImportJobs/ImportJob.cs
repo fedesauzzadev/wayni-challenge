@@ -21,6 +21,13 @@ public sealed class ImportJob
     public long BytesCommitted { get; internal set; }
     public long LinesProcessed { get; internal set; }
     public long LinesRejected { get; internal set; }
+
+    /// <summary>
+    /// Líneas de ancho correcto descartadas deliberadamente por NO ser registros de deudor
+    /// con CUIT (marcador ≠ "11": control 98/99, encabezados/cierres, otros tipos de
+    /// identificación). No cuentan como <see cref="LinesRejected"/>: no son errores.
+    /// </summary>
+    public long LinesSkippedControl { get; internal set; }
     public string? LeaseOwner { get; internal set; }
     public DateTimeOffset? HeartbeatAt { get; internal set; }
     public DateTimeOffset CreatedAtUtc { get; }
@@ -108,6 +115,7 @@ public sealed class ImportJob
             BytesCommitted = snapshot.BytesCommitted,
             LinesProcessed = snapshot.LinesProcessed,
             LinesRejected = snapshot.LinesRejected,
+            LinesSkippedControl = snapshot.LinesSkippedControl,
             LeaseOwner = snapshot.LeaseOwner,
             HeartbeatAt = snapshot.HeartbeatAt,
             StartedAtUtc = snapshot.StartedAtUtc,
@@ -161,7 +169,7 @@ public sealed class ImportJob
         StartedAtUtc ??= utcNow;
     }
 
-    public void CommitBatch(long bytesCommitted, long batchLinesProcessed, long batchLinesRejected)
+    public void CommitBatch(long bytesCommitted, long batchLinesProcessed, long batchLinesRejected, long batchLinesSkippedControl)
     {
         EnsureStatus(ImportJobStatus.Loading);
         if (bytesCommitted < BytesCommitted)
@@ -172,6 +180,7 @@ public sealed class ImportJob
         BytesCommitted = bytesCommitted;
         LinesProcessed += batchLinesProcessed;
         LinesRejected += batchLinesRejected;
+        LinesSkippedControl += batchLinesSkippedControl;
     }
 
     public void MarkAggregating() => TransitionTo(ImportJobStatus.Aggregating);

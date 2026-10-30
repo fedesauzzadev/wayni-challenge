@@ -74,6 +74,7 @@ public sealed partial class EmailNotifier(
         Periodo: {importCompleted.Periodo}
         Lineas procesadas: {importCompleted.LinesProcessed}
         Lineas rechazadas: {importCompleted.LinesRejected}
+        Registros de control descartados (marcador 98/99): {importCompleted.LinesSkippedControl}
         Duracion: {importCompleted.DurationMs.ToString(CultureInfo.InvariantCulture)} ms
         Completado (UTC): {importCompleted.CompletedAtUtc:O}
         """;

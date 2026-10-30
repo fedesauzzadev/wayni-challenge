@@ -22,6 +22,7 @@ public sealed class EmailNotifierTests
         202311,
         10,
         0,
+        285,
         12.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 
@@ -56,6 +57,7 @@ public sealed class EmailNotifierTests
         message.Body.Should()
             .Contain("Lineas procesadas: 10")
             .And.Contain("Lineas rechazadas: 0")
+            .And.Contain("Registros de control descartados (marcador 98/99): 285")
             .And.Contain("Duracion: 12.5 ms");
     }
 
