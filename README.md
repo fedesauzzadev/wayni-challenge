@@ -2,7 +2,7 @@
 
 Solución de microservicios en .NET para el pipeline ELT de deudores financieros: ingestion → agregación → swap → consulta.
 
-> Documento de presentación del repositorio: [`docs/overview.html`](docs/overview.html) (HTML autocontenido, funciona offline con doble click).
+> Documento de presentación del repositorio: [docs/overview.html](https://fedesauzzadev.github.io/wayni-challenge/overview.html) (versión renderizada; el archivo fuente es autocontenido y funciona offline con doble click).
 
 ## Concurrencia y bloqueos
 
