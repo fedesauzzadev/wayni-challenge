@@ -23,4 +23,12 @@ public sealed class DatabaseOptions
     /// </summary>
     [Range(30, 3600)]
     public int MigrationCommandTimeoutSeconds { get; set; } = 900;
+
+    /// <summary>
+    /// Command timeout de las queries de lectura (0 = default de Npgsql, 30s): los
+    /// COUNT/SUM sobre los agregados del import activo (~20M de filas) superan 30s con
+    /// cache de Postgres frío justo después de un import y devolvían 500.
+    /// </summary>
+    [Range(0, 600)]
+    public int CommandTimeoutSeconds { get; set; } = 30;
 }

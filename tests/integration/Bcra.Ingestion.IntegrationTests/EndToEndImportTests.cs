@@ -89,6 +89,12 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
             foreach (var (codigo, expectedSuma) in sample.PorEntidad)
                 entidadRows[codigo].SumaTotal.Should().Be(expectedSuma, $"suma_total de la entidad {codigo}");
 
+            var totals = await connection.QuerySingleAsync<(long Deudores, long Entidades, decimal Suma)>(
+                "SELECT deudores_count, entidades_count, suma_total FROM import_job WHERE id = @Id", new { Id = job.Id });
+            totals.Deudores.Should().Be(sample.PorCuit.Count, "los totales del import quedan precomputados para /totales");
+            totals.Entidades.Should().Be(sample.PorEntidad.Count);
+            totals.Suma.Should().Be(sample.PorCuit.Values.Sum(v => v.Suma), "suma_total = Σ suma_total de los deudores agregados");
+
             var entidades = (await connection.QueryAsync<(int Codigo, string Nombre)>(
                 "SELECT codigo, nombre FROM entidad ORDER BY codigo")).ToList();
             entidades.Should().HaveCount(SampleFiles.Entidades.Length);

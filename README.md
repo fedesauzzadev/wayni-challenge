@@ -19,7 +19,7 @@ Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de ses
 | Renovar el lease | `UPDATE import_job SET heartbeat_at = now WHERE id = @id AND lease_owner = @owner AND status IN ('Loading','Aggregating')`. |
 | Swap de versión publicada | `UPDATE` de la fila única de `active_import` en transacción corta con `FOR UPDATE`; las lecturas del query-service son MVCC (ven la versión vieja o la nueva, nunca mixta). |
 | Índices del import nuevo | `CREATE INDEX` (no CONCURRENTLY) sobre la partición de staging y los agregados del import, ANTES del swap. |
-| Limpieza del import anterior | Después del swap: `DROP TABLE` de la partición de staging y `DROP INDEX` de los índices parciales del import anterior. Nunca del activo; sin `DELETE` masivo. |
+| Limpieza del import anterior | Después del swap: `DROP TABLE` de la partición de staging, `DROP INDEX` de los índices parciales y `DELETE` de los agregados (`deudor_agg`/`entidad_agg`) del import anterior (sin acumulación por import). Nunca del activo; sin `DELETE` masivo sobre el activo. |
 | Aislamiento | READ COMMITTED explícito en todas las transacciones de escritura. Cero usos de SERIALIZABLE o `LOCK TABLE`. |
 
 Detalle de decisiones: [ADR-005](docs/adr/ADR-005-reclamo-skip-locked-lease.md), [ADR-006](docs/adr/ADR-006-un-solo-import-activo-indice-parcial.md), [ADR-007](docs/adr/ADR-007-read-committed.md), [ADR-008](docs/adr/ADR-008-sin-lock-distribuido.md). Visión general: [ARCHITECTURE.md](ARCHITECTURE.md).

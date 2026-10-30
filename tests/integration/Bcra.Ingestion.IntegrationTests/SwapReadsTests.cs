@@ -82,6 +82,26 @@ public sealed class SwapReadsTests(PostgresFixture fixture)
             var stagingB = await connection.QuerySingleOrDefaultAsync<string>(
                 "SELECT to_regclass(@Name)::text", new { Name = $"debt_staging_{importB.Id:N}" });
             stagingB.Should().NotBeNull("nunca se dropea el almacenamiento del import activo");
+
+            var deudoresA = await connection.QuerySingleAsync<long>(
+                "SELECT count(*) FROM deudor_agg WHERE import_id = @Id", new { Id = importA.Id });
+            deudoresA.Should().Be(0, "los agregados del import anterior se eliminan tras el swap (sin acumulación por import)");
+
+            var entidadesA = await connection.QuerySingleAsync<long>(
+                "SELECT count(*) FROM entidad_agg WHERE import_id = @Id", new { Id = importA.Id });
+            entidadesA.Should().Be(0, "los agregados de entidades del import anterior también se eliminan");
+
+            var deudoresB = await connection.QuerySingleAsync<long>(
+                "SELECT count(*) FROM deudor_agg WHERE import_id = @Id", new { Id = importB.Id });
+            deudoresB.Should().Be(sampleB.PorCuit.Count, "el import activo conserva sus agregados");
+
+            var rankingA = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT to_regclass(@Name)::text", new { Name = $"ix_deudor_agg_{importA.Id:N}_ranking" });
+            rankingA.Should().BeNull("los índices parciales del import anterior se dropean");
+
+            var rankingB = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT to_regclass(@Name)::text", new { Name = $"ix_deudor_agg_{importB.Id:N}_ranking" });
+            rankingB.Should().NotBeNull("el ranking index del import activo existe para el ORDER BY suma_total del query-service");
         }
     }
 }

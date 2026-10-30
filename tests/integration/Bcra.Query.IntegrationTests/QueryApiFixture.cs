@@ -54,8 +54,8 @@ public sealed class QueryApiFixture : IAsyncLifetime
         await connection.OpenAsync();
         await connection.ExecuteAsync(
             """
-            INSERT INTO import_job (id, source, status, created_at)
-            VALUES (@Id, 'integration-test', 'Completed', NOW());
+            INSERT INTO import_job (id, source, status, created_at, deudores_count, entidades_count, suma_total)
+            VALUES (@Id, 'integration-test', 'Completed', NOW(), 4, 2, 1850.7);
 
             UPDATE active_import SET import_id = @Id WHERE id = 1;
 

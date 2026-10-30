@@ -283,6 +283,12 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             SELECT import_id, entidad, SUM(monto)
             FROM {staging}
             GROUP BY import_id, entidad;
+
+            UPDATE import_job SET
+                deudores_count = (SELECT COUNT(*) FROM deudor_agg WHERE import_id = @ImportId),
+                entidades_count = (SELECT COUNT(*) FROM entidad_agg WHERE import_id = @ImportId),
+                suma_total = (SELECT COALESCE(SUM(suma_total), 0) FROM deudor_agg WHERE import_id = @ImportId)
+            WHERE id = @ImportId;
             """,
             new { ImportId = importId },
             commandTimeout: IndefiniteCommandTimeout,
@@ -310,11 +316,24 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         var command = new CommandDefinition(
             $"""
             CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
+            CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_ranking ON deudor_agg (suma_total DESC, cuit ASC) WHERE import_id = '{importId}';
             CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}';
             """,
             commandTimeout: IndefiniteCommandTimeout,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
+
+        // VACUUM no puede ejecutarse dentro del batch implícito multi-statement de Npgsql:
+        // una ejecución por sentencia. Marca las filas nuevas como all-visible (index-only
+        // scans en los COUNT/SUM del query-service) y deja stats frescas pre-swap.
+        foreach (var vacuumStatement in new[] { "VACUUM (ANALYZE) deudor_agg", "VACUUM (ANALYZE) entidad_agg" })
+        {
+            var vacuum = new CommandDefinition(
+                vacuumStatement,
+                commandTimeout: IndefiniteCommandTimeout,
+                cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(vacuum);
+        }
     }
 
     public async Task<Guid?> SwapActiveImportAsync(Guid importId, CancellationToken cancellationToken)
@@ -354,8 +373,12 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             $"""
             DROP TABLE IF EXISTS {staging};
             DROP INDEX IF EXISTS ix_deudor_agg_{hex}_cuit;
+            DROP INDEX IF EXISTS ix_deudor_agg_{hex}_ranking;
             DROP INDEX IF EXISTS ix_entidad_agg_{hex}_entidad;
+            DELETE FROM deudor_agg WHERE import_id = @ImportId;
+            DELETE FROM entidad_agg WHERE import_id = @ImportId;
             """,
+            new { ImportId = importId },
             commandTimeout: IndefiniteCommandTimeout,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);

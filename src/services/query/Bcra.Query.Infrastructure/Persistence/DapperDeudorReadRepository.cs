@@ -1,12 +1,16 @@
 using Bcra.Query.Domain.Ports;
 using Bcra.Query.Domain.ReadModels;
+using Bcra.Shared.Infrastructure.Options;
 using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
+using Microsoft.Extensions.Options;
 using CuitValue = Bcra.Shared.Domain.ValueObjects.Cuit;
 
 namespace Bcra.Query.Infrastructure.Persistence;
 
-public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFactory) : IDeudorReadRepository
+public sealed class DapperDeudorReadRepository(
+    IDbConnectionFactory connectionFactory,
+    IOptions<DatabaseOptions> databaseOptions) : IDeudorReadRepository
 {
     private const string SelectColumns = """
         d.cuit,
@@ -23,7 +27,7 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
             SELECT {SelectColumns}
             FROM deudor_agg d
             LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
-            WHERE d.import_id = @ImportId AND d.cuit = @Cuit
+            WHERE d.import_id = @ImportId AND d.cuit = @Cuit::char(11)
             """,
             new { ImportId = importId, Cuit = cuit.Value },
             cancellationToken: cancellationToken);
@@ -36,13 +40,25 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         var nombreFilter = omitirSinNombre ? " AND n.nombre IS NOT NULL" : string.Empty;
-        var command = new CommandDefinition(
-            $"""
-            SELECT COUNT(*)::bigint
-            FROM deudor_agg d
-            LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
-            WHERE d.import_id = @ImportId{nombreFilter};
+        var timeout = databaseOptions.Value.CommandTimeoutSeconds;
 
+        // Sin filtro de nombre el total es el precomputado en import_job por la agregación:
+        // un COUNT real sobre ~20M filas cuesta >10s con cache frío; acá es una lectura de 1 fila.
+        var countCommand = new CommandDefinition(
+            omitirSinNombre
+                ? """
+                  SELECT COUNT(*)::bigint
+                  FROM deudor_agg d
+                  LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
+                  WHERE d.import_id = @ImportId AND n.nombre IS NOT NULL
+                  """
+                : "SELECT deudores_count::bigint FROM import_job WHERE id = @ImportId",
+            new { ImportId = importId },
+            commandTimeout: timeout,
+            cancellationToken: cancellationToken);
+
+        var pageCommand = new CommandDefinition(
+            $"""
             SELECT {SelectColumns}
             FROM deudor_agg d
             LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
@@ -51,11 +67,11 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
             LIMIT @Limit OFFSET @Offset;
             """,
             new { ImportId = importId, Limit = limit, Offset = offset },
+            commandTimeout: timeout,
             cancellationToken: cancellationToken);
 
-        using var multi = await connection.QueryMultipleAsync(command);
-        var total = await multi.ReadFirstAsync<long>();
-        var rows = await multi.ReadAsync<DeudorRow>();
+        var total = await connection.QuerySingleAsync<long>(countCommand);
+        var rows = await connection.QueryAsync<DeudorRow>(pageCommand);
         return new DeudoresPage(total, rows.Select(row => row.ToReadModel()).ToList());
     }
 
@@ -65,11 +81,14 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
         var command = new CommandDefinition(
             """
             SELECT
-                (SELECT COUNT(*) FROM deudor_agg WHERE import_id = @ImportId)::bigint AS cantidad_deudores,
-                (SELECT COUNT(*) FROM entidad_agg WHERE import_id = @ImportId)::bigint AS cantidad_entidades,
-                COALESCE((SELECT SUM(suma_total) FROM deudor_agg WHERE import_id = @ImportId), 0) AS suma_total
+                deudores_count::bigint AS cantidad_deudores,
+                entidades_count::bigint AS cantidad_entidades,
+                suma_total AS suma_total
+            FROM import_job
+            WHERE id = @ImportId
             """,
             new { ImportId = importId },
+            commandTimeout: databaseOptions.Value.CommandTimeoutSeconds,
             cancellationToken: cancellationToken);
 
         var row = await connection.QuerySingleAsync<TotalesRow>(command);
