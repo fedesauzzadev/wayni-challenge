@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AppConfig } from "./config.js";
 import type { RecipientStore } from "./db.js";
+import type { LocalUploader } from "./local.js";
 import { buildReferenceKey, buildUploadKey, sha256File, type S3Uploader } from "./s3.js";
 import type { UpstreamClient, UpstreamResponse } from "./upstream.js";
 
@@ -13,6 +14,7 @@ export interface AppDeps {
   upstream: UpstreamClient;
   db: RecipientStore;
   s3Uploader: S3Uploader;
+  localUploader: LocalUploader;
 }
 
 const EmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -84,10 +86,11 @@ export function createApp(deps: AppDeps) {
 
   /**
    * Upload en pasos desde el punto de vista del pipeline: (1) referencias opcionales
-   * (Maeent.txt/Nomdeu.txt) y el archivo de deudores → S3 (LocalStack) vía BFF, con keys
-   * por periodo — el ingestion resuelve las referencias en el mismo prefijo del source;
-   * (2) POST /imports al ingestion con el source s3:// + etag sha256 (idempotencia por
-   * source+etag+periodo del backend).
+   * (Maeent.txt/Nomdeu.txt) y el archivo de deudores → S3 (LocalStack) o al dir local
+   * compartido con el ingestion (DATA_DIR), con keys por periodo — el ingestion resuelve
+   * las referencias en el mismo prefijo del source; (2) POST /imports al ingestion con el
+   * source (s3:// o /data/...) + etag sha256 (idempotencia por source+etag+periodo del
+   * backend). storage: "s3" (default, retrocompatible) o "local" (sin pasar por S3).
    */
   app.post("/api/imports/upload", uploadFields, async (req, res, next) => {
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
@@ -99,6 +102,7 @@ export function createApp(deps: AppDeps) {
 
     try {
       const periodo = parsePeriodo(req.body.periodo);
+      const store = req.body.storage === "local" ? deps.localUploader : deps.s3Uploader;
 
       const references: Array<[name: "maeent" | "nomdeu", fileName: string]> = [
         ["maeent", "Maeent.txt"],
@@ -107,13 +111,13 @@ export function createApp(deps: AppDeps) {
       for (const [fieldName, fileName] of references) {
         const reference = files?.[fieldName]?.[0];
         if (reference) {
-          await deps.s3Uploader(reference.path, reference.size, buildReferenceKey(periodo, fileName));
+          await store(reference.path, reference.size, buildReferenceKey(periodo, fileName));
           await rm(reference.path, { force: true }).catch(() => {});
         }
       }
 
       const etag = await sha256File(file.path);
-      const uploaded = await deps.s3Uploader(file.path, file.size, buildUploadKey(periodo, etag));
+      const uploaded = await store(file.path, file.size, buildUploadKey(periodo, etag));
 
       const importResult = await deps.upstream.requestImport({
         source: uploaded.source,

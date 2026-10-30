@@ -15,6 +15,8 @@ export interface UploadProgressProps {
   fileName: string;
   fileSize: number;
   statusText: string;
+  /** Label de la fase (a): depende del modo de entrega (directo o vía S3). */
+  uploadLabel: string;
 }
 
 const phaseLabels: Record<UploadPhase, string> = {
@@ -31,6 +33,7 @@ export function UploadProgress({
   fileName,
   fileSize,
   statusText,
+  uploadLabel,
 }: UploadProgressProps) {
   const uploadingDone = phase !== "uploading";
   const globalProcessing = processingPercent ?? 0;
@@ -56,7 +59,7 @@ export function UploadProgress({
 
       <PhaseRow
         icon={<CloudUpload className="size-4" />}
-        label="Subida a S3 (LocalStack)"
+        label={uploadLabel}
         done={uploadingDone}
         active={phase === "uploading"}
         percent={uploadPercent}

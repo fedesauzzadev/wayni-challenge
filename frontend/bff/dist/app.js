@@ -3,7 +3,7 @@ import multer from "multer";
 import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildUploadKey, sha256File } from "./s3.js";
+import { buildReferenceKey, buildUploadKey, sha256File } from "./s3.js";
 const EmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** Periodo por defecto: mes corriente en formato yyyyMM. */
 export function defaultPeriodo(now = new Date()) {
@@ -28,6 +28,12 @@ export function createApp(deps) {
             filename: (_req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.originalname}`),
         }),
     });
+    // file = deudores; maeent/nomdeu opcionales (referencias que el pipeline busca junto al source).
+    const uploadFields = upload.fields([
+        { name: "file", maxCount: 1 },
+        { name: "maeent", maxCount: 1 },
+        { name: "nomdeu", maxCount: 1 },
+    ]);
     app.get("/health", (_req, res) => {
         res.json({ status: "ok", service: "bcra-admin-bff" });
     });
@@ -58,21 +64,36 @@ export function createApp(deps) {
         }
     });
     /**
-     * Upload en 2 pasos desde el punto de vista del pipeline: (1) archivo del escritorio →
-     * S3 (LocalStack) vía BFF, (2) POST /imports al ingestion con el source s3:// + etag
-     * sha256 (idempotencia por source+etag+periodo del backend).
+     * Upload en pasos desde el punto de vista del pipeline: (1) referencias opcionales
+     * (Maeent.txt/Nomdeu.txt) y el archivo de deudores → S3 (LocalStack) o al dir local
+     * compartido con el ingestion (DATA_DIR), con keys por periodo — el ingestion resuelve
+     * las referencias en el mismo prefijo del source; (2) POST /imports al ingestion con el
+     * source (s3:// o /data/...) + etag sha256 (idempotencia por source+etag+periodo del
+     * backend). storage: "s3" (default, retrocompatible) o "local" (sin pasar por S3).
      */
-    app.post("/api/imports/upload", upload.single("file"), async (req, res, next) => {
-        const file = req.file;
+    app.post("/api/imports/upload", uploadFields, async (req, res, next) => {
+        const files = req.files;
+        const file = files?.file?.[0];
         if (!file) {
             res.status(400).json({ error: "Campo 'file' (multipart) es requerido." });
             return;
         }
         try {
-            const etag = await sha256File(file.path);
-            const key = buildUploadKey(file.originalname);
-            const uploaded = await deps.s3Uploader(file.path, file.size, key);
             const periodo = parsePeriodo(req.body.periodo);
+            const store = req.body.storage === "local" ? deps.localUploader : deps.s3Uploader;
+            const references = [
+                ["maeent", "Maeent.txt"],
+                ["nomdeu", "Nomdeu.txt"],
+            ];
+            for (const [fieldName, fileName] of references) {
+                const reference = files?.[fieldName]?.[0];
+                if (reference) {
+                    await store(reference.path, reference.size, buildReferenceKey(periodo, fileName));
+                    await rm(reference.path, { force: true }).catch(() => { });
+                }
+            }
+            const etag = await sha256File(file.path);
+            const uploaded = await store(file.path, file.size, buildUploadKey(periodo, etag));
             const importResult = await deps.upstream.requestImport({
                 source: uploaded.source,
                 etag,

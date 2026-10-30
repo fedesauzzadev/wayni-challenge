@@ -52,6 +52,7 @@ export const api = {
     periodo: number,
     onUploadProgress: (percent: number) => void,
     references: { maeent?: File | null; nomdeu?: File | null } = {},
+    storage: "local" | "s3" = "local",
   ): Promise<UploadResult> =>
     unwrap<UploadResult>(
       http.postForm<UploadResult>(
@@ -59,6 +60,7 @@ export const api = {
         {
           file,
           periodo: String(periodo),
+          storage,
           ...(references.maeent ? { maeent: references.maeent } : {}),
           ...(references.nomdeu ? { nomdeu: references.nomdeu } : {}),
         },

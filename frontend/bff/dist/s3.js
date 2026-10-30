@@ -29,8 +29,20 @@ export function createS3Uploader(config) {
         return { bucket: config.s3.bucket, key, source: `s3://${config.s3.bucket}/${key}` };
     };
 }
-export function buildUploadKey(originalName, now = new Date()) {
-    const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
-    const stamp = now.toISOString().replace(/[:.]/g, "-");
-    return `uploads/${now.toISOString().slice(0, 10)}/${stamp}-${safeName}`;
+/**
+ * Key del archivo de deudores: por periodo + hash del contenido. Mismo archivo + mismo
+ * periodo → mismo source + mismo etag → el ingestion deduplica por (source, etag, periodo).
+ */
+export function buildUploadKey(periodo, etag) {
+    return `uploads/${periodo}/deudores-${etag.slice(0, 16)}.txt`;
+}
+/**
+ * Key canónico de los archivos de referencia: el ImportJobProcessor del ingestion resuelve
+ * Maeent.txt/Nomdeu.txt en el mismo "directorio" del source del job (uploads/<periodo>/).
+ */
+export function buildReferenceKey(periodo, fileName) {
+    if (fileName !== "Maeent.txt" && fileName !== "Nomdeu.txt") {
+        throw new Error(`Archivo de referencia no soportado: ${fileName}`);
+    }
+    return `uploads/${periodo}/${fileName}`;
 }

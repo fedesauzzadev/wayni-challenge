@@ -106,7 +106,8 @@ const children = [
     cwd: path.join(root, "frontend", "bff"),
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
-    env: { ...process.env, BFF_PORT: bffPort },
+    // DATA_DIR resuelto a absoluta: mismo dir que el compose monta como /data (upload directo).
+    env: { ...process.env, BFF_PORT: bffPort, DATA_DIR: path.resolve(root, env.DATA_DIR ?? "samples") },
   }),
   spawn("npm", ["run", "dev"], {
     cwd: path.join(root, "frontend", "web"),

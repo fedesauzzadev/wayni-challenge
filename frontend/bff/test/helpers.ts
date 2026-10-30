@@ -2,6 +2,7 @@ import type { AppDeps, } from "../src/app.js";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config.js";
 import type { Recipient, RecipientStore } from "../src/db.js";
+import type { LocalUploadResult } from "../src/local.js";
 import type { S3UploadResult } from "../src/s3.js";
 import type { RequestImportPayload, UpstreamClient, UpstreamResponse } from "../src/upstream.js";
 
@@ -16,6 +17,10 @@ export const testConfig: AppConfig = {
     bucket: "bcra-local",
     accessKeyId: "test",
     secretAccessKey: "test",
+  },
+  localUpload: {
+    dataDir: "./samples",
+    ingestionSourceRoot: "/data",
   },
   postgres: {
     host: "localhost",
@@ -108,16 +113,27 @@ export class FakeS3Uploader {
   }
 }
 
+export class FakeLocalUploader {
+  uploads: { key: string; size: number }[] = [];
+
+  async upload(_filePath: string, size: number, key: string): Promise<LocalUploadResult> {
+    this.uploads.push({ key, size });
+    return { source: `/data/${key}` };
+  }
+}
+
 export function buildTestApp(overrides: Partial<AppDeps> = {}) {
   const upstream = new FakeUpstream();
   const db = new FakeRecipientStore();
   const s3 = new FakeS3Uploader();
+  const local = new FakeLocalUploader();
   const app = createApp({
     config: testConfig,
     upstream,
     db,
     s3Uploader: (filePath, size, key) => s3.upload(filePath, size, key),
+    localUploader: (filePath, size, key) => local.upload(filePath, size, key),
     ...overrides,
   });
-  return { app, upstream, db, s3 };
+  return { app, upstream, db, s3, local };
 }

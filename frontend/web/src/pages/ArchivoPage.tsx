@@ -27,6 +27,13 @@ import { TERMINAL_STATUSES, type ImportStatus } from "@/api/types";
 
 const POLL_INTERVAL_MS = 2000;
 
+type StorageMode = "local" | "s3";
+
+const storageDescriptions: Record<StorageMode, string> = {
+  local: "El archivo se entrega directo al ingestion (dir compartido, sin pasar por S3).",
+  s3: "El archivo se sube al bucket bcra-local de S3 (LocalStack) y el ingestion lo lee desde ahí.",
+};
+
 const statusBadge: Record<string, "success" | "destructive" | "warning" | "default"> = {
   Completed: "success",
   Failed: "destructive",
@@ -43,6 +50,7 @@ export function ArchivoPage() {
   const [maeent, setMaeent] = useState<File | null>(null);
   const [nomdeu, setNomdeu] = useState<File | null>(null);
   const [periodo, setPeriodo] = useState(() => defaultPeriodo());
+  const [storage, setStorage] = useState<StorageMode>("local");
   const [phase, setPhase] = useState<UploadPhase | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [processingPercent, setProcessingPercent] = useState<number | null>(null);
@@ -89,8 +97,12 @@ export function ArchivoPage() {
       setPhase("uploading");
       setUploadPercent(0);
       setProcessingPercent(null);
-      setStatusText("Subiendo el archivo al bucket de S3 (LocalStack)…");
-      return api.uploadFile(file, Number(periodo), setUploadPercent, { maeent, nomdeu });
+      setStatusText(
+        storage === "s3"
+          ? "Subiendo el archivo al bucket de S3 (LocalStack)…"
+          : "Transfiriendo el archivo al ingestion (directo, sin S3)…",
+      );
+      return api.uploadFile(file, Number(periodo), setUploadPercent, { maeent, nomdeu }, storage);
     },
     onSuccess: (result) => {
       setPhase("processing");
@@ -98,7 +110,7 @@ export function ArchivoPage() {
       setStatusText(
         result.alreadyExisted
           ? "El archivo ya estaba importado (idempotencia source+etag+periodo); se consulta su estado…"
-          : "Archivo en S3. Import encolado en el ingestion; se consulta el progreso…",
+          : "Archivo entregado. Import encolado en el ingestion; se consulta el progreso…",
       );
       setActiveImportId(result.importId);
     },
@@ -144,8 +156,9 @@ export function ArchivoPage() {
             Cargar archivo de deudores
           </CardTitle>
           <CardDescription>
-            El archivo se sube al bucket <code className="text-xs">bcra-local</code> de S3 (LocalStack)
-            y el ingestion dispara el pipeline: staging → agregación → swap atómico. Incluí
+            Elegí cómo entregar el archivo: <strong>directo</strong> (sin S3, alcanza con
+            seleccionarlo de tu PC) o <strong>vía S3</strong> (LocalStack). En ambos casos el
+            ingestion dispara el pipeline: staging → agregación → swap atómico. Incluí
             <code className="text-xs"> Maeent.txt</code> y <code className="text-xs">Nomdeu.txt</code> la
             primera vez (o cuando cambien): el pipeline los busca junto al archivo de deudores.
           </CardDescription>
@@ -205,6 +218,25 @@ export function ArchivoPage() {
             >
               {nomdeu ? `Nomdeu: ${nomdeu.name}` : "Nomdeu.txt (opcional)"}
             </Button>
+            <div
+              className="flex overflow-hidden rounded-md border"
+              role="group"
+              aria-label="Modo de entrega del archivo"
+            >
+              {(["local", "s3"] as const).map((mode) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  size="sm"
+                  variant={storage === mode ? "default" : "ghost"}
+                  className="rounded-none"
+                  onClick={() => setStorage(mode)}
+                  disabled={uploadMutation.isPending || phase === "uploading" || phase === "processing"}
+                >
+                  {mode === "local" ? "Directo (sin S3)" : "Vía S3 (LocalStack)"}
+                </Button>
+              ))}
+            </div>
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Periodo
               <Input
@@ -224,6 +256,8 @@ export function ArchivoPage() {
             </Button>
           </form>
 
+          <p className="text-xs text-muted-foreground">{storageDescriptions[storage]}</p>
+
           {file && phase && (
             <UploadProgress
               phase={phase}
@@ -232,6 +266,7 @@ export function ArchivoPage() {
               fileName={file.name}
               fileSize={file.size}
               statusText={statusText}
+              uploadLabel={storage === "s3" ? "Subida a S3 (LocalStack)" : "Entrega directa al ingestion"}
             />
           )}
         </CardContent>

@@ -138,4 +138,61 @@ describe("POST /api/imports/upload", () => {
 
     expect(upstream.requestImportCalls[0]?.periodo).toBe(now.getUTCFullYear() * 100 + now.getUTCMonth() + 1);
   });
+
+  it("storage=local copia al dir compartido y dispara el import con source /data/ (sin pasar por S3)", async () => {
+    const { app, upstream, s3, local } = buildTestApp();
+
+    const response = await request(app)
+      .post("/api/imports/upload")
+      .field("periodo", "202610")
+      .field("storage", "local")
+      .attach("file", Buffer.from(fileContent, "utf-8"), "deudores.txt");
+
+    expect(response.status).toBe(201);
+    const expectedTag = createHash("sha256").update(fileContent).digest("hex").slice(0, 16);
+    expect(response.body.source).toBe(`/data/uploads/202610/deudores-${expectedTag}.txt`);
+    expect(s3.uploads).toHaveLength(0);
+    expect(local.uploads.map((upload) => upload.key)).toEqual([
+      `uploads/202610/deudores-${expectedTag}.txt`,
+    ]);
+
+    expect(upstream.requestImportCalls).toHaveLength(1);
+    const payload = upstream.requestImportCalls[0];
+    expect(payload?.source).toBe(response.body.source);
+    expect(payload?.etag).toBe(createHash("sha256").update(fileContent).digest("hex"));
+    expect(payload?.size).toBe(fileContent.length);
+    expect(payload?.periodo).toBe(202610);
+  });
+
+  it("storage=local copia Maeent.txt y Nomdeu.txt al mismo prefijo del periodo", async () => {
+    const { app, local } = buildTestApp();
+
+    const response = await request(app)
+      .post("/api/imports/upload")
+      .field("periodo", "202610")
+      .field("storage", "local")
+      .attach("maeent", Buffer.from("11ENTIDAD 11"), "Maeent.txt")
+      .attach("nomdeu", Buffer.from("20000000001DEUDOR UNO"), "Nomdeu.txt")
+      .attach("file", Buffer.from(fileContent, "utf-8"), "deudores.txt");
+
+    expect(response.status).toBe(201);
+    expect(local.uploads.map((upload) => upload.key)).toEqual([
+      "uploads/202610/Maeent.txt",
+      "uploads/202610/Nomdeu.txt",
+      expect.stringMatching(/^uploads\/202610\/deudores-/),
+    ]);
+  });
+
+  it("storage ausente defaulta a s3 (retrocompatible)", async () => {
+    const { app, s3, local } = buildTestApp();
+
+    const response = await request(app)
+      .post("/api/imports/upload")
+      .attach("file", Buffer.from(fileContent, "utf-8"), "deudores.txt");
+
+    expect(response.status).toBe(201);
+    expect(response.body.source).toMatch(/^s3:\/\//);
+    expect(s3.uploads).toHaveLength(1);
+    expect(local.uploads).toHaveLength(0);
+  });
 });
