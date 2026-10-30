@@ -101,19 +101,28 @@ await run("npm", ["install"], { cwd: path.join(root, "frontend", "bff") });
 await run("npm", ["install"], { cwd: path.join(root, "frontend", "web") });
 
 log(`Arrancando BFF (:${bffPort}) y web (:${webPort})…`);
+// El .env ya tiene lo que el BFF requiere en runtime (UPLOAD_API_KEY, POSTGRES_PASSWORD…):
+// se pasa a los hijos junto con DATA_DIR resuelta, así setup funciona desde cualquier shell
+// sin exports manuales. process.env gana por si el usuario sobreescribe algo ad-hoc.
+const childEnv = {
+  ...env,
+  ...process.env,
+  BFF_PORT: bffPort,
+  WEB_PORT: webPort,
+  DATA_DIR: path.resolve(root, env.DATA_DIR ?? "samples"),
+};
 const children = [
   spawn("npm", ["run", "dev"], {
     cwd: path.join(root, "frontend", "bff"),
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
-    // DATA_DIR resuelto a absoluta: mismo dir que el compose monta como /data (upload directo).
-    env: { ...process.env, BFF_PORT: bffPort, DATA_DIR: path.resolve(root, env.DATA_DIR ?? "samples") },
+    env: childEnv,
   }),
   spawn("npm", ["run", "dev"], {
     cwd: path.join(root, "frontend", "web"),
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
-    env: { ...process.env, WEB_PORT: webPort, BFF_PORT: bffPort },
+    env: childEnv,
   }),
 ];
 for (const [index, child] of children.entries()) {
