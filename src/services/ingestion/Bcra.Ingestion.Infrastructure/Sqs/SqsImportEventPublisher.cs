@@ -3,6 +3,7 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 using Bcra.Ingestion.Application.Ports;
 using Bcra.Shared.Domain.Contracts;
+using Bcra.Shared.Infrastructure.Sqs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 

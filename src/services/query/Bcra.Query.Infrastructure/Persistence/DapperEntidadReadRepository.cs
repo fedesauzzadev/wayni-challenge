@@ -1,10 +1,11 @@
 using Bcra.Query.Domain.Ports;
 using Bcra.Query.Domain.ReadModels;
+using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
 
 namespace Bcra.Query.Infrastructure.Persistence;
 
-public sealed class DapperEntidadReadRepository(IReadOnlyDbConnectionFactory connectionFactory) : IEntidadReadRepository
+public sealed class DapperEntidadReadRepository(IDbConnectionFactory connectionFactory) : IEntidadReadRepository
 {
     static DapperEntidadReadRepository() => DefaultTypeMap.MatchNamesWithUnderscores = true;
 

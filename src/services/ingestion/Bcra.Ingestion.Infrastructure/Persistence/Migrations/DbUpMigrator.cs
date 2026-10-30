@@ -1,4 +1,4 @@
-using Bcra.Ingestion.Infrastructure.Options;
+using Bcra.Shared.Infrastructure.Options;
 using DbUp;
 using Microsoft.Extensions.Options;
 using Npgsql;

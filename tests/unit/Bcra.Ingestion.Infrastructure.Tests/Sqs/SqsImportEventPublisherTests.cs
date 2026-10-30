@@ -2,6 +2,7 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 using Bcra.Ingestion.Infrastructure.Sqs;
 using Bcra.Shared.Domain.Contracts;
+using Bcra.Shared.Infrastructure.Sqs;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

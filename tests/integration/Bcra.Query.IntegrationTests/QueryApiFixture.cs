@@ -1,5 +1,5 @@
-using Bcra.Ingestion.Infrastructure.Options;
 using Bcra.Ingestion.Infrastructure.Persistence.Migrations;
+using Bcra.Shared.Infrastructure.Options;
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

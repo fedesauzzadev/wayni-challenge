@@ -1,10 +1,10 @@
 using Bcra.Query.Domain.Ports;
-using Bcra.Query.Infrastructure.Persistence;
+using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
 
 namespace Bcra.Query.Infrastructure.Persistence;
 
-public sealed class ActiveImportResolver(IReadOnlyDbConnectionFactory connectionFactory) : IActiveImportResolver
+public sealed class ActiveImportResolver(IDbConnectionFactory connectionFactory) : IActiveImportResolver
 {
     public async Task<Guid?> ResolveActiveImportIdAsync(CancellationToken cancellationToken)
     {

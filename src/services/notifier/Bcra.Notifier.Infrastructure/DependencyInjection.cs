@@ -1,8 +1,9 @@
 using Amazon.SQS;
 using Bcra.Notifier.Application.Notifiers;
-using Bcra.Notifier.Infrastructure.Aws;
 using Bcra.Notifier.Infrastructure.Notifiers;
 using Bcra.Notifier.Infrastructure.Sqs;
+using Bcra.Shared.Infrastructure.Aws;
+using Bcra.Shared.Infrastructure.Sqs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

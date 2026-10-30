@@ -1,4 +1,4 @@
-namespace Bcra.Notifier.Infrastructure.Sqs;
+namespace Bcra.Shared.Infrastructure.Sqs;
 
 public sealed class SqsOptions
 {

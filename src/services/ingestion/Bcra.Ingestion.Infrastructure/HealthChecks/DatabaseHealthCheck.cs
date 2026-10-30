@@ -1,4 +1,4 @@
-using Bcra.Ingestion.Infrastructure.Persistence;
+using Bcra.Shared.Infrastructure.Persistence;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Bcra.Ingestion.Infrastructure.HealthChecks;

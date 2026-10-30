@@ -1,7 +1,7 @@
 using System.Data.Common;
 using Npgsql;
 
-namespace Bcra.Ingestion.Infrastructure.Persistence;
+namespace Bcra.Shared.Infrastructure.Persistence;
 
 public interface IDbConnectionFactory
 {

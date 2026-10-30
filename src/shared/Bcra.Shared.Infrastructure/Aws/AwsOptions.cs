@@ -1,4 +1,4 @@
-namespace Bcra.Notifier.Infrastructure.Aws;
+namespace Bcra.Shared.Infrastructure.Aws;
 
 public sealed class AwsOptions
 {

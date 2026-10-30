@@ -4,6 +4,7 @@ using System.Text;
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Ingestion.Domain.Parsing;
+using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
 using Npgsql;
 

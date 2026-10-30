@@ -1,7 +1,8 @@
 using Bcra.Ingestion.Domain.ImportJobs;
-using Bcra.Ingestion.Infrastructure.Options;
 using Bcra.Ingestion.Infrastructure.Persistence;
 using Bcra.Ingestion.Infrastructure.Persistence.Migrations;
+using Bcra.Shared.Infrastructure.Options;
+using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;

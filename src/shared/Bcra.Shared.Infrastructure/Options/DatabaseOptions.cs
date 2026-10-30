@@ -1,4 +1,4 @@
-namespace Bcra.Ingestion.Infrastructure.Options;
+namespace Bcra.Shared.Infrastructure.Options;
 
 public sealed class DatabaseOptions
 {

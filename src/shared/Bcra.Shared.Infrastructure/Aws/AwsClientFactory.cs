@@ -2,7 +2,7 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.SQS;
 
-namespace Bcra.Ingestion.Infrastructure.Aws;
+namespace Bcra.Shared.Infrastructure.Aws;
 
 public static class AwsClientFactory
 {

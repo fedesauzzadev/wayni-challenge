@@ -1,11 +1,12 @@
 using Bcra.Query.Domain.Ports;
 using Bcra.Query.Domain.ReadModels;
+using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
 using CuitValue = Bcra.Shared.Domain.ValueObjects.Cuit;
 
 namespace Bcra.Query.Infrastructure.Persistence;
 
-public sealed class DapperDeudorReadRepository(IReadOnlyDbConnectionFactory connectionFactory) : IDeudorReadRepository
+public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFactory) : IDeudorReadRepository
 {
     private const string SelectColumns = """
         d.cuit,
