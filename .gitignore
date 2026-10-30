@@ -11,3 +11,4 @@ BenchmarkDotNet.Artifacts/
 .opencode/
 samples/
 src/**/openapi/
+MEJORAS.md
