@@ -8,6 +8,8 @@ namespace Bcra.Notifier.Infrastructure.Sqs;
 
 public sealed class SqsHealthCheck(IAmazonSQS sqs, IOptions<SqsOptions> options) : IHealthCheck
 {
+    private const string QueueArnAttribute = "QueueArn";
+
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         var queueUrl = options.Value.ImportCompletedQueueUrl;
@@ -17,7 +19,7 @@ public sealed class SqsHealthCheck(IAmazonSQS sqs, IOptions<SqsOptions> options)
         try
         {
             var response = await sqs.GetQueueAttributesAsync(
-                new GetQueueAttributesRequest { QueueUrl = queueUrl, AttributeNames = ["QueueArn"] },
+                new GetQueueAttributesRequest { QueueUrl = queueUrl, AttributeNames = [QueueArnAttribute] },
                 cancellationToken);
 
             return response.HttpStatusCode == System.Net.HttpStatusCode.OK

@@ -28,7 +28,7 @@ app.MapGet("/deudores/{cuit}", async (string cuit, GetDeudorByCuitHandler handle
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetDeudorByCuit")
-    .RequireRateLimiting("default")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<DeudorResumenResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status404NotFound)
@@ -40,7 +40,7 @@ app.MapGet("/deudores", async (int? top, bool? omitirSinNombre, GetTopDeudoresHa
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetTopDeudores")
-    .RequireRateLimiting("default")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<IReadOnlyList<DeudorResumenResponse>>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
@@ -51,7 +51,7 @@ app.MapGet("/entidades/{codigo:int}", async (int codigo, GetEntidadHandler handl
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetEntidad")
-    .RequireRateLimiting("default")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<EntidadResumenResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status404NotFound)
@@ -63,7 +63,7 @@ app.MapGet("/totales", async (GetTotalesHandler handler, CancellationToken cance
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetTotales")
-    .RequireRateLimiting("default")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<DeudorTotalesResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 

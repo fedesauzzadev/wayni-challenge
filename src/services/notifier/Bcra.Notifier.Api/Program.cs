@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddDefaultApi("notifier-service", useRateLimiter: false);
 
 builder.Services
-    .AddNotifierApplication(builder.Configuration)
+    .AddNotifierApplication()
     .AddNotifierInfrastructure(builder.Configuration);
 
 builder.Services.AddHostedService<SqsImportCompletedConsumer>();

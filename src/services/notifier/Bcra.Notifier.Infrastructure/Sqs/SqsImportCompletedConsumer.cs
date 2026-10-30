@@ -14,6 +14,8 @@ public sealed partial class SqsImportCompletedConsumer(
     ImportCompletedMessageHandler messageHandler,
     ILogger<SqsImportCompletedConsumer> logger) : BackgroundService
 {
+    /// <summary>Máximo de segundos que SQS acepta en WaitTimeSeconds (long polling).</summary>
+    private const int MaxSqsWaitTimeSeconds = 20;
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var queueUrl = options.Value.ImportCompletedQueueUrl;
@@ -32,7 +34,7 @@ public sealed partial class SqsImportCompletedConsumer(
                     {
                         QueueUrl = queueUrl,
                         MaxNumberOfMessages = Math.Max(1, options.Value.MaxMessages),
-                        WaitTimeSeconds = Math.Clamp(options.Value.WaitTimeSeconds, 0, 20)
+                        WaitTimeSeconds = Math.Clamp(options.Value.WaitTimeSeconds, 0, MaxSqsWaitTimeSeconds)
                     },
                     stoppingToken);
 

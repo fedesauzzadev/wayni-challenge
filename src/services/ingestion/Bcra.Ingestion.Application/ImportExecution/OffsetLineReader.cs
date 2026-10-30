@@ -4,18 +4,21 @@ public readonly record struct SourceLine(ReadOnlyMemory<byte> Line, long NextOff
 
 public sealed class OffsetLineReader
 {
+    /// <summary>Tamaño por defecto del buffer de lectura del stream (128 KiB).</summary>
+    public const int BufferSize = 128 * 1024;
+
     private readonly Stream _stream;
     private readonly byte[] _buffer;
     private int _valid;
     private int _consumed;
     private long _streamOffset;
 
-    public OffsetLineReader(Stream stream, int bufferSize = 128 * 1024)
+    public OffsetLineReader(Stream stream, int bufferSize = BufferSize)
         : this(stream, stream.CanSeek ? stream.Position : 0, bufferSize)
     {
     }
 
-    public OffsetLineReader(Stream stream, long streamOffset, int bufferSize = 128 * 1024)
+    public OffsetLineReader(Stream stream, long streamOffset, int bufferSize = BufferSize)
     {
         _stream = stream;
         _buffer = new byte[Math.Max(1024, bufferSize)];

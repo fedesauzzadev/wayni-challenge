@@ -15,6 +15,13 @@ namespace Bcra.Shared.Infrastructure;
 
 public static class DefaultApiExtensions
 {
+    /// <summary>Nombre de la política fixed-window por IP aplicada por defecto.</summary>
+    public const string DefaultRateLimitPolicy = "default";
+
+    private const string UnknownClientKey = "unknown";
+    private const int DefaultPermitLimit = 100;
+    private const int DefaultWindowSeconds = 60;
+
     /// <summary>
     /// Bootstrap comun de los servicios: Serilog con <see cref="LoggingExtensions.ConfigureDefaults"/>,
     /// infra compartida, observabilidad, ProblemDetails, OpenAPI 3.1 (con document transformer de
@@ -105,12 +112,12 @@ public static class DefaultApiExtensions
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy("default", context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            options.AddPolicy(DefaultRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? UnknownClientKey,
                 _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = configuration.GetValue("RateLimiting:PermitLimit", 100),
-                    Window = TimeSpan.FromSeconds(configuration.GetValue("RateLimiting:WindowSeconds", 60)),
+                    PermitLimit = configuration.GetValue("RateLimiting:PermitLimit", DefaultPermitLimit),
+                    Window = TimeSpan.FromSeconds(configuration.GetValue("RateLimiting:WindowSeconds", DefaultWindowSeconds)),
                     QueueLimit = 0
                 }));
         });

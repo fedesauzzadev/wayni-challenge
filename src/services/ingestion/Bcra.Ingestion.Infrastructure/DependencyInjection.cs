@@ -1,14 +1,18 @@
 using Amazon.S3;
 using Amazon.SQS;
 using Bcra.Ingestion.Application.GetImportStatus;
+using Bcra.Ingestion.Application.ImportExecution;
+using Bcra.Ingestion.Application.Options;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Ingestion.Domain.Situations;
+using Bcra.Ingestion.Infrastructure.FileSources;
 using Bcra.Ingestion.Infrastructure.HealthChecks;
 using Bcra.Ingestion.Infrastructure.Persistence;
 using Bcra.Ingestion.Infrastructure.Persistence.Migrations;
-using Bcra.Ingestion.Infrastructure.FileSources;
 using Bcra.Ingestion.Infrastructure.Situations;
 using Bcra.Ingestion.Infrastructure.Sqs;
+using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Aws;
 using Bcra.Shared.Infrastructure.Options;
 using Bcra.Shared.Infrastructure.Persistence;
@@ -23,9 +27,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddIngestionInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<DatabaseOptions>(configuration.GetSection(DatabaseOptions.SectionName));
-        services.Configure<AwsOptions>(configuration.GetSection(AwsOptions.SectionName));
-        services.Configure<SqsOptions>(configuration.GetSection(SqsOptions.SectionName));
+        services.AddValidatedOptions<DatabaseOptions>(configuration, DatabaseOptions.SectionName);
+        services.AddValidatedOptions<AwsOptions>(configuration, AwsOptions.SectionName);
+        services.AddValidatedOptions<SqsOptions>(configuration, SqsOptions.SectionName);
 
         services.AddSingleton<IDbConnectionFactory>(sp =>
         {
@@ -38,21 +42,21 @@ public static class DependencyInjection
 
         services.AddSingleton<DbUpMigrator>();
         services.AddScoped<IImportJobRepository, DapperImportJobRepository>();
-        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter>(sp =>
-            (Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
+        services.AddScoped<IStagingBatchCommitter>(sp =>
+            (IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
         services.AddSingleton<LocalFileSourceFactory>();
-        services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory, RoutingFileSourceFactory>();
-        services.AddScoped<Bcra.Ingestion.Application.Ports.IImportEventPublisher, SqsImportEventPublisher>();
+        services.AddSingleton<IFileSourceFactory, RoutingFileSourceFactory>();
+        services.AddScoped<IImportEventPublisher, SqsImportEventPublisher>();
 
         services.AddSingleton<ISituacionAggregationStrategy>(sp =>
         {
-            var ingestion = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Bcra.Ingestion.Application.Options.IngestionOptions>>().Value;
+            var ingestion = sp.GetRequiredService<IOptions<IngestionOptions>>().Value;
             return ingestion.SituacionStrategy switch
             {
                 MaxLiteralSituacionStrategy.StrategyName => new MaxLiteralSituacionStrategy(),
                 WorstSeveritySituacionStrategy.StrategyName => new WorstSeveritySituacionStrategy(),
                 _ => throw new InvalidOperationException(
-                    $"Unknown situacion strategy '{ingestion.SituacionStrategy}'. Valid values: 'max', 'peor_situacion'.")
+                    $"Unknown situacion strategy '{ingestion.SituacionStrategy}'. Valid values: '{MaxLiteralSituacionStrategy.StrategyName}', '{WorstSeveritySituacionStrategy.StrategyName}'.")
             };
         });
 

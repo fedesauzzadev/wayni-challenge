@@ -26,9 +26,9 @@ public sealed class StagingCopyLoaderTests
 
     private static ImportJob ResumedJob(long bytesCommitted, long linesProcessed, string? sourceEtag, long size)
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/deudores.txt", "etag-cliente", size, 202311,
-            ImportJobStatus.Loading, bytesCommitted, linesProcessed, 0, "worker-1", Now, Now, Now, null, sourceEtag);
+            ImportJobStatus.Loading, bytesCommitted, linesProcessed, 0, "worker-1", Now, Now, Now, null, sourceEtag));
         return job;
     }
 

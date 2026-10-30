@@ -1,18 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Bcra.Notifier.Application\Bcra.Notifier.Application.csproj" />
-    <ProjectReference Include="..\..\..\shared\Bcra.Shared.Infrastructure\Bcra.Shared.Infrastructure.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bcra.Notifier.Application\Bcra.Notifier.Application.csproj" />
+    <ProjectReference Include="..\..\..\shared\Bcra.Shared.Infrastructure\Bcra.Shared.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

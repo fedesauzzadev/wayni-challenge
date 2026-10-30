@@ -38,7 +38,7 @@ public class ResultTests
     }
 
     [Fact]
-    public void Ok_WithError_Throws()
+    public void Fail_NonGeneric_ConstructsWithoutThrowing()
     {
         var act = () => Result.Fail(Error.NotFound("X", "x"));
 

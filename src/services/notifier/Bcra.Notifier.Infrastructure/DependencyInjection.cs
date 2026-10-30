@@ -2,6 +2,7 @@ using Amazon.SQS;
 using Bcra.Notifier.Application.Notifiers;
 using Bcra.Notifier.Infrastructure.Notifiers;
 using Bcra.Notifier.Infrastructure.Sqs;
+using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Aws;
 using Bcra.Shared.Infrastructure.Sqs;
 using Microsoft.Extensions.Configuration;
@@ -14,9 +15,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddNotifierInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<AwsOptions>(configuration.GetSection(AwsOptions.SectionName));
-        services.Configure<SqsOptions>(configuration.GetSection(SqsOptions.SectionName));
-        services.Configure<NotificationsOptions>(configuration.GetSection(NotificationsOptions.SectionName));
+        services.AddValidatedOptions<AwsOptions>(configuration, AwsOptions.SectionName);
+        services.AddValidatedOptions<SqsOptions>(configuration, SqsOptions.SectionName);
+        services.AddValidatedOptions<NotificationsOptions>(configuration, NotificationsOptions.SectionName);
 
         services.AddSingleton<IAmazonSQS>(sp =>
             AwsClientFactory.CreateSqsClient(sp.GetRequiredService<IOptions<AwsOptions>>().Value));
@@ -26,11 +27,9 @@ public static class DependencyInjection
         var webhookUrl = configuration[$"{NotificationsOptions.SectionName}:{nameof(NotificationsOptions.WebhookUrl)}"];
         if (!string.IsNullOrWhiteSpace(webhookUrl))
         {
-            var timeoutSeconds = configuration.GetValue(
-                $"{NotificationsOptions.SectionName}:{nameof(NotificationsOptions.TimeoutSeconds)}",
-                10);
-            services.AddHttpClient(WebhookNotifier.HttpClientName, client =>
-                client.Timeout = TimeSpan.FromSeconds(timeoutSeconds));
+            services.AddHttpClient(WebhookNotifier.HttpClientName, (sp, client) =>
+                client.Timeout = TimeSpan.FromSeconds(
+                    sp.GetRequiredService<IOptions<NotificationsOptions>>().Value.TimeoutSeconds));
             services.AddSingleton<INotifier, WebhookNotifier>();
         }
 

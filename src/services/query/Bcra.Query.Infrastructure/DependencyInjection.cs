@@ -1,6 +1,7 @@
 using Bcra.Query.Domain.Ports;
 using Bcra.Query.Infrastructure.HealthChecks;
 using Bcra.Query.Infrastructure.Persistence;
+using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Options;
 using Bcra.Shared.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
@@ -13,7 +14,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddQueryInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<DatabaseOptions>(configuration.GetSection(DatabaseOptions.SectionName));
+        services.AddValidatedOptions<DatabaseOptions>(configuration, DatabaseOptions.SectionName);
 
         services.AddSingleton<IDbConnectionFactory>(sp =>
         {

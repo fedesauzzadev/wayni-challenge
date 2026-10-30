@@ -15,9 +15,9 @@ builder.Services
     .AddIngestionApplication(builder.Configuration)
     .AddIngestionInfrastructure(builder.Configuration);
 
-var isDocumentGeneration = Environment.CommandLine.Contains("getdocument", StringComparison.OrdinalIgnoreCase);
+const string DocumentGenerationArgument = "getdocument";
 
-builder.Services.AddSingleton<StartupState>();
+var isDocumentGeneration = Environment.CommandLine.Contains(DocumentGenerationArgument, StringComparison.OrdinalIgnoreCase);
 
 if (!isDocumentGeneration)
 {

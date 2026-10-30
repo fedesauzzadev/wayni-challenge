@@ -92,36 +92,21 @@ public sealed class ImportJob
     public static ImportJob Create(string source, DateTimeOffset utcNow) =>
         new(Guid.NewGuid(), source, ImportJobStatus.Pending, utcNow);
 
-    public static ImportJob Rehydrate(
-        Guid id,
-        string source,
-        string? etag,
-        long size,
-        int? periodo,
-        ImportJobStatus status,
-        long bytesCommitted,
-        long linesProcessed,
-        long linesRejected,
-        string? leaseOwner,
-        DateTimeOffset? heartbeatAt,
-        DateTimeOffset createdAtUtc,
-        DateTimeOffset? startedAtUtc,
-        DateTimeOffset? finishedAtUtc,
-        string? sourceEtag = null)
+    public static ImportJob Rehydrate(ImportJobSnapshot snapshot)
     {
-        var job = new ImportJob(id, source, status, createdAtUtc)
+        var job = new ImportJob(snapshot.Id, snapshot.Source, snapshot.Status, snapshot.CreatedAtUtc)
         {
-            Etag = etag,
-            Size = size,
-            Periodo = periodo,
-            BytesCommitted = bytesCommitted,
-            LinesProcessed = linesProcessed,
-            LinesRejected = linesRejected,
-            LeaseOwner = leaseOwner,
-            HeartbeatAt = heartbeatAt,
-            StartedAtUtc = startedAtUtc,
-            FinishedAtUtc = finishedAtUtc,
-            SourceEtag = sourceEtag
+            Etag = snapshot.Etag,
+            Size = snapshot.Size,
+            Periodo = snapshot.Periodo,
+            BytesCommitted = snapshot.BytesCommitted,
+            LinesProcessed = snapshot.LinesProcessed,
+            LinesRejected = snapshot.LinesRejected,
+            LeaseOwner = snapshot.LeaseOwner,
+            HeartbeatAt = snapshot.HeartbeatAt,
+            StartedAtUtc = snapshot.StartedAtUtc,
+            FinishedAtUtc = snapshot.FinishedAtUtc,
+            SourceEtag = snapshot.SourceEtag
         };
         return job;
     }
@@ -129,10 +114,7 @@ public sealed class ImportJob
     public void SetSourceMetadata(long size, string? etag)
     {
         EnsureStatus(ImportJobStatus.Pending, ImportJobStatus.Loading);
-        if (Size > 0 && Size != size)
-            throw new InvalidOperationException("Source size changed; the file was modified.");
-        if (!string.IsNullOrEmpty(Etag) && !string.IsNullOrEmpty(etag) && Etag != etag)
-            throw new InvalidOperationException("Source ETag changed; the file was modified.");
+        EnsureSourceUnchanged(size, etag, Etag);
 
         Size = size;
         Etag = etag ?? Etag;
@@ -146,13 +128,18 @@ public sealed class ImportJob
     public void ObserveSource(long size, string? sourceEtag)
     {
         EnsureStatus(ImportJobStatus.Pending, ImportJobStatus.Loading);
-        if (Size > 0 && Size != size)
-            throw new InvalidOperationException("Source size changed; the file was modified.");
-        if (!string.IsNullOrEmpty(SourceEtag) && !string.IsNullOrEmpty(sourceEtag) && SourceEtag != sourceEtag)
-            throw new InvalidOperationException("Source ETag changed; the file was modified.");
+        EnsureSourceUnchanged(size, sourceEtag, SourceEtag);
 
         Size = size;
         SourceEtag = sourceEtag ?? SourceEtag;
+    }
+
+    private void EnsureSourceUnchanged(long size, string? etag, string? currentEtag)
+    {
+        if (Size > 0 && Size != size)
+            throw new InvalidOperationException("Source size changed; the file was modified.");
+        if (!string.IsNullOrEmpty(currentEtag) && !string.IsNullOrEmpty(etag) && currentEtag != etag)
+            throw new InvalidOperationException("Source ETag changed; the file was modified.");
     }
 
     public void SetPeriodo(int periodo)

@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -24,7 +25,9 @@ public sealed class QueryApiFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
-        new DbUpMigrator(Options.Create(new DatabaseOptions { ConnectionString = ConnectionString }))
+        new DbUpMigrator(
+                Options.Create(new DatabaseOptions { ConnectionString = ConnectionString }),
+                NullLogger<DbUpMigrator>.Instance)
             .UpgradeWithRetry();
     }
 

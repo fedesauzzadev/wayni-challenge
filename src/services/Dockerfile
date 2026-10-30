@@ -3,7 +3,7 @@ ARG SERVICE
 ARG PROJECT
 WORKDIR /src
 
-COPY Directory.Build.props ./
+COPY Directory.Build.props Directory.Packages.props ./
 COPY ["src/shared/Bcra.Shared.Domain/Bcra.Shared.Domain.csproj", "src/shared/Bcra.Shared.Domain/"]
 COPY ["src/shared/Bcra.Shared.Infrastructure/Bcra.Shared.Infrastructure.csproj", "src/shared/Bcra.Shared.Infrastructure/"]
 COPY ["src/services/${SERVICE}/${PROJECT}.Domain/${PROJECT}.Domain.csproj", "src/services/${SERVICE}/${PROJECT}.Domain/"]

@@ -19,8 +19,6 @@ public sealed class WebhookNotifier(
     public async Task<Result<NotificationReceipt>> NotifyAsync(ImportCompletedEvent importCompleted, CancellationToken cancellationToken)
     {
         var webhookUrl = options.Value.WebhookUrl;
-        if (string.IsNullOrWhiteSpace(webhookUrl))
-            return Result.Ok(new NotificationReceipt(Strategy, true));
 
         try
         {

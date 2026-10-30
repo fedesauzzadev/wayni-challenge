@@ -14,12 +14,16 @@ public sealed class DeudoresRecordParser
     private const byte DigitZero = (byte)'0';
     private const long MaxMontoIntegerPart = 9_999_999_999_999;
 
+    /// <summary>Offset del marcador fijo "11" que sigue al periodo (posiciones 11-12 del registro).</summary>
+    private const int RecordMarkerOffset = 11;
+    private const byte RecordMarkerDigit = DigitZero + 1;
+
     public static bool TryParse(ReadOnlySpan<byte> line, [NotNullWhen(true)] out ParsedDebtRecord? record)
     {
         record = null;
         if (line.Length != LineLength)
             return false;
-        if (line[11] != DigitZero + 1 || line[12] != DigitZero + 1)
+        if (line[RecordMarkerOffset] != RecordMarkerDigit || line[RecordMarkerOffset + 1] != RecordMarkerDigit)
             return false;
         if (!TryParseBounded(line[..5], short.MaxValue, out var entidad))
             return false;
@@ -43,33 +47,14 @@ public sealed class DeudoresRecordParser
     {
         foreach (var value in field)
         {
-            if (!IsDigit(value))
+            if (!FixedWidthDigits.IsAsciiDigit(value))
                 return false;
         }
         return true;
     }
 
-    private static bool TryParseBounded(ReadOnlySpan<byte> field, int maxValue, out int value)
-    {
-        field = field.Trim(Space);
-        value = 0;
-        if (field.IsEmpty || field.Length > 10)
-            return false;
-
-        var accumulated = 0L;
-        foreach (var digit in field)
-        {
-            if (!IsDigit(digit))
-                return false;
-            accumulated = accumulated * 10 + (digit - DigitZero);
-        }
-
-        if (accumulated > maxValue)
-            return false;
-
-        value = (int)accumulated;
-        return true;
-    }
+    private static bool TryParseBounded(ReadOnlySpan<byte> field, int maxValue, out int value) =>
+        FixedWidthDigits.TryParse(field, maxLength: 10, maxValue, out value);
 
     private static bool TryParseMonto(ReadOnlySpan<byte> field, out decimal monto)
     {
@@ -81,7 +66,7 @@ public sealed class DeudoresRecordParser
         var index = 0;
         var integerPart = 0L;
         var hasIntegerDigits = false;
-        while (index < field.Length && IsDigit(field[index]))
+        while (index < field.Length && FixedWidthDigits.IsAsciiDigit(field[index]))
         {
             integerPart = integerPart * 10 + (field[index] - DigitZero);
             if (integerPart > MaxMontoIntegerPart)
@@ -105,7 +90,7 @@ public sealed class DeudoresRecordParser
 
         var hasFractionDigits = false;
         var scale = 0.1m;
-        while (index < field.Length && IsDigit(field[index]))
+        while (index < field.Length && FixedWidthDigits.IsAsciiDigit(field[index]))
         {
             value += (field[index] - DigitZero) * scale;
             scale /= 10m;
@@ -121,6 +106,4 @@ public sealed class DeudoresRecordParser
         monto = value;
         return true;
     }
-
-    private static bool IsDigit(byte value) => (uint)(value - DigitZero) <= 9;
 }

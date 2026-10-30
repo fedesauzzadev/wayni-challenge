@@ -4,6 +4,7 @@ using Bcra.Ingestion.Infrastructure.Persistence.Migrations;
 using Bcra.Shared.Infrastructure.Options;
 using Bcra.Shared.Infrastructure.Persistence;
 using Dapper;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -27,7 +28,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
-        new DbUpMigrator(Options.Create(new DatabaseOptions { ConnectionString = ConnectionString }))
+        new DbUpMigrator(
+                Options.Create(new DatabaseOptions { ConnectionString = ConnectionString }),
+                NullLogger<DbUpMigrator>.Instance)
             .UpgradeWithRetry();
     }
 

@@ -10,11 +10,15 @@ public sealed record ImportRequestResponse(Guid Id, string Status, bool AlreadyE
 
 public sealed class RequestImportHandler(IImportJobRepository repository, TimeProvider clock)
 {
+    /// <summary>Rango válido de Periodo (yyyyMM): 1900-01 a 2999-12.</summary>
+    public const int MinPeriod = 190001;
+    public const int MaxPeriod = 299912;
+
     public async Task<Result<ImportRequestResponse>> HandleAsync(RequestImportCommand command, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(command.Source))
             return Result.Fail<ImportRequestResponse>(Error.Validation("ImportJob.SourceRequired", "Source cannot be empty."));
-        if (command.Periodo < 190001 || command.Periodo > 299912)
+        if (command.Periodo < MinPeriod || command.Periodo > MaxPeriod)
             return Result.Fail<ImportRequestResponse>(Error.Validation("ImportJob.PeriodoInvalid", "Periodo must be a valid yyyyMM value."));
         if (command.Size < 0)
             return Result.Fail<ImportRequestResponse>(Error.Validation("ImportJob.SizeInvalid", "Size cannot be negative."));

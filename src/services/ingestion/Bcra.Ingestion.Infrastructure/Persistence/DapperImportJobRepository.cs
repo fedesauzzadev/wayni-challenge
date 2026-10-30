@@ -19,6 +19,15 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         lease_owner, heartbeat_at, created_at, started_at, finished_at
         """;
 
+    /// <summary>Sin timeout de comando: las fases largas de agregación/índices corren sin límite.</summary>
+    private const int IndefiniteCommandTimeout = 0;
+
+    /// <summary><c>active_import</c> es una tabla singleton: la única fila es la id = 1.</summary>
+    private const int SingletonImportRowId = 1;
+
+    /// <summary>Lote de upsert de archivos de referencia (Maeent.txt/Nomdeu.txt).</summary>
+    private const int ReferenceUpsertBatchSize = 5000;
+
     static DapperImportJobRepository() => DefaultTypeMap.MatchNamesWithUnderscores = true;
 
     public async Task<(ImportJob Job, bool AlreadyExisted)> AddOrGetExistingAsync(ImportJob job, CancellationToken cancellationToken)
@@ -260,7 +269,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             GROUP BY import_id, entidad;
             """,
             new { ImportId = importId },
-            commandTimeout: 0,
+            commandTimeout: IndefiniteCommandTimeout,
             transaction: transaction,
             cancellationToken: cancellationToken);
 
@@ -289,7 +298,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
             CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}';
             """,
-            commandTimeout: 0,
+            commandTimeout: IndefiniteCommandTimeout,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
@@ -299,13 +308,13 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var lockCommand = new CommandDefinition(
-            "SELECT import_id FROM active_import WHERE id = 1 FOR UPDATE;",
+            $"SELECT import_id FROM active_import WHERE id = {SingletonImportRowId} FOR UPDATE;",
             transaction: transaction,
             cancellationToken: cancellationToken);
         var previous = await connection.QuerySingleOrDefaultAsync<Guid?>(lockCommand);
 
         var swapCommand = new CommandDefinition(
-            "UPDATE active_import SET import_id = @ImportId WHERE id = 1;",
+            $"UPDATE active_import SET import_id = @ImportId WHERE id = {SingletonImportRowId};",
             new { ImportId = importId },
             transaction: transaction,
             cancellationToken: cancellationToken);
@@ -319,7 +328,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         var activeCommand = new CommandDefinition(
-            "SELECT import_id FROM active_import WHERE id = 1;",
+            $"SELECT import_id FROM active_import WHERE id = {SingletonImportRowId};",
             cancellationToken: cancellationToken);
         var active = await connection.QuerySingleOrDefaultAsync<Guid?>(activeCommand);
         if (active == importId)
@@ -333,7 +342,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             DROP INDEX IF EXISTS ix_deudor_agg_{hex}_cuit;
             DROP INDEX IF EXISTS ix_entidad_agg_{hex}_entidad;
             """,
-            commandTimeout: 0,
+            commandTimeout: IndefiniteCommandTimeout,
             cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
@@ -370,8 +379,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
 
     private static string PartitionName(string prefix, Guid importId) => $"{prefix}_{Hex(importId)}";
 
-    private const int ReferenceUpsertBatchSize = 5000;
-
     private static async Task LoadEntidadesAsync(DbConnection connection, Stream stream, CancellationToken cancellationToken)
     {
         var reader = new OffsetLineReader(stream);
@@ -383,10 +390,10 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             var span = line.Line.Span;
             if (span.Length < 6)
                 continue;
-            if (!TryParseShortField(span[..5], out var codigo))
+            if (!FixedWidthDigits.TryParse(span[..5], maxLength: 5, short.MaxValue, out var codigo))
                 continue;
 
-            codigos.Add(codigo);
+            codigos.Add((short)codigo);
             nombres.Add(Encoding.Latin1.GetString(span[5..]).Trim());
 
             if (codigos.Count >= ReferenceUpsertBatchSize)
@@ -460,30 +467,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         return connection.ExecuteAsync(command);
     }
 
-    private static bool TryParseShortField(ReadOnlySpan<byte> field, out short value)
-    {
-        field = field.Trim((byte)' ');
-        value = 0;
-        if (field.IsEmpty || field.Length > 5)
-            return false;
-
-        var accumulated = 0;
-        foreach (var digit in field)
-        {
-            if (!IsAsciiDigit(digit))
-                return false;
-            accumulated = accumulated * 10 + (digit - (byte)'0');
-        }
-
-        if (accumulated > short.MaxValue)
-            return false;
-
-        value = (short)accumulated;
-        return true;
-    }
-
-    private static bool IsAsciiDigit(byte value) => (uint)(value - (byte)'0') <= 9;
-
     private sealed class ImportStatsRow
     {
         public long TotalDeudores { get; set; }
@@ -510,9 +493,10 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         public DateTimeOffset? FinishedAt { get; set; }
 
         public ImportJob ToDomain() => ImportJob.Rehydrate(
-            Id, Source, Etag, Size, Periodo,
-            Enum.Parse<ImportJobStatus>(Status),
-            BytesCommitted, LinesProcessed, LinesRejected,
-            LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt, SourceEtag);
+            new ImportJobSnapshot(
+                Id, Source, Etag, Size, Periodo,
+                Enum.Parse<ImportJobStatus>(Status),
+                BytesCommitted, LinesProcessed, LinesRejected,
+                LeaseOwner, HeartbeatAt, CreatedAt, StartedAt, FinishedAt, SourceEtag));
     }
 }

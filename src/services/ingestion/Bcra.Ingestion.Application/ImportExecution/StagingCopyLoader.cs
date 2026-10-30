@@ -8,18 +8,18 @@ using Microsoft.Extensions.Options;
 namespace Bcra.Ingestion.Application.ImportExecution;
 
 /// <summary>
-/// La fuente cambió (ETag o size) respecto del import en curso: reanudarla duplicaría o
-/// corrompería datos, así que el job debe terminar <see cref="ImportJobStatus.Failed"/>.
+/// Copia el archivo de deudores a staging por lotes atómicos (lote + checkpoint en la misma
+/// transacción), reanudando desde el último <see cref="ImportJob.BytesCommitted"/> confirmado.
 /// </summary>
-public sealed class SourceChangedException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
-
 public sealed class StagingCopyLoader(
     IStagingBatchCommitter batchCommitter,
     TimeProvider clock,
     IOptions<IngestionOptions> options,
     ImportPipelineMeter pipelineMeter)
 {
+    /// <summary>Tope de capacidad inicial del buffer de lote: evita sobre-alocar para BatchSize gigantes.</summary>
+    private const int MaxCopyBatchSize = 8192;
+
     public async Task LoadAsync(ImportJob job, IFileSource source, string leaseOwner, CancellationToken cancellationToken)
     {
         var opened = await source.OpenAsync(job.BytesCommitted, cancellationToken);
@@ -34,7 +34,7 @@ public sealed class StagingCopyLoader(
         }
 
         var batchSize = Math.Max(1, options.Value.BatchSize);
-        var batch = new List<ParsedDebtRecord>(Math.Min(batchSize, 8192));
+        var batch = new List<ParsedDebtRecord>(Math.Min(batchSize, MaxCopyBatchSize));
         var batchValidLines = 0L;
         var batchRejectedLines = 0L;
         var reader = new OffsetLineReader(stream, job.BytesCommitted);

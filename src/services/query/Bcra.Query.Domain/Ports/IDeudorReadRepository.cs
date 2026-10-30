@@ -11,13 +11,3 @@ public interface IDeudorReadRepository
 
     Task<DeudorTotales> GetTotalesAsync(Guid importId, CancellationToken cancellationToken);
 }
-
-public interface IEntidadReadRepository
-{
-    Task<EntidadResumen?> GetEntidadAsync(Guid importId, int codigo, CancellationToken cancellationToken);
-}
-
-public interface IActiveImportResolver
-{
-    Task<Guid?> ResolveActiveImportIdAsync(CancellationToken cancellationToken);
-}

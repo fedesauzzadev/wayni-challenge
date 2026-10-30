@@ -172,9 +172,9 @@ public class ImportJobTests
     [Fact]
     public void Rehydrate_PreservesAllFields()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag", 100, 202311,
-            ImportJobStatus.Loading, 60, 10, 2, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Loading, 60, 10, 2, "worker-1", Now, Now, Now, null));
 
         job.Id.Should().NotBeEmpty();
         job.Status.Should().Be(ImportJobStatus.Loading);
@@ -185,9 +185,9 @@ public class ImportJobTests
     [Fact]
     public void Claim_ExpiredLeaseOnAggregatingJob_TakesOverWithoutResettingProgress()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag", 10_000, 202311,
-            ImportJobStatus.Aggregating, 10_000, 4_000, 7, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Aggregating, 10_000, 4_000, 7, "worker-1", Now, Now, Now, null));
 
         var takeoverAt = Now + LeaseTimeout + TimeSpan.FromSeconds(1);
         job.Claim("worker-2", takeoverAt, LeaseTimeout);
@@ -203,9 +203,9 @@ public class ImportJobTests
     [Fact]
     public void RenewLease_OnAggregatingJob_ByOwner_Succeeds()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag", 100, 202311,
-            ImportJobStatus.Aggregating, 100, 10, 0, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Aggregating, 100, 10, 0, "worker-1", Now, Now, Now, null));
 
         job.RenewLease("worker-1", Now.AddSeconds(30));
 
@@ -229,9 +229,9 @@ public class ImportJobTests
     [Fact]
     public void SetSourceMetadata_OnResumedJob_WithSameSizeAndEtag_IsIdempotent()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag-1", 1_000, 202311,
-            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null));
 
         job.SetSourceMetadata(1_000, "etag-1");
 
@@ -242,9 +242,9 @@ public class ImportJobTests
     [Fact]
     public void SetSourceMetadata_OnResumedJob_WithChangedSize_Throws()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag-1", 1_000, 202311,
-            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null));
 
         var act = () => job.SetSourceMetadata(2_000, "etag-1");
 
@@ -254,9 +254,9 @@ public class ImportJobTests
     [Fact]
     public void SetSourceMetadata_OnResumedJob_WithChangedEtag_Throws()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag-1", 1_000, 202311,
-            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null));
 
         var act = () => job.SetSourceMetadata(1_000, "etag-2");
 
@@ -266,9 +266,9 @@ public class ImportJobTests
     [Fact]
     public void CommitBatch_OnResumedJob_ContinuesFromCheckpoint()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag-1", 1_000, 202311,
-            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null);
+            ImportJobStatus.Loading, 600, 10, 2, "worker-1", Now, Now, Now, null));
 
         job.CommitBatch(1_000, 4, 1);
 
@@ -431,9 +431,9 @@ public class ImportJobTests
     [Fact]
     public void IsClaimable_ActiveJobWithNullHeartbeat_IsClaimable()
     {
-        var job = ImportJob.Rehydrate(
+        var job = ImportJob.Rehydrate(new ImportJobSnapshot(
             Guid.NewGuid(), "/data/x.txt", "etag", 100, 202311,
-            ImportJobStatus.Aggregating, 100, 10, 0, "worker-1", null, Now, Now, null);
+            ImportJobStatus.Aggregating, 100, 10, 0, "worker-1", null, Now, Now, null));
 
         job.IsClaimable(Now, LeaseTimeout).Should().BeTrue();
     }
