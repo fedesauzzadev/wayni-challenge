@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using Bcra.Notifier.Application.Notifiers;
 using Bcra.Notifier.Domain.Notifications;
 using Bcra.Shared.Domain.Contracts;
@@ -15,8 +14,6 @@ public sealed class WebhookNotifier(
 {
     public const string HttpClientName = "notifier-webhook";
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public string Strategy => "webhook";
 
     public async Task<Result<NotificationReceipt>> NotifyAsync(ImportCompletedEvent importCompleted, CancellationToken cancellationToken)
@@ -28,7 +25,7 @@ public sealed class WebhookNotifier(
         try
         {
             using var client = httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.PostAsJsonAsync(webhookUrl, importCompleted, JsonOptions, cancellationToken);
+            using var response = await client.PostAsJsonAsync(webhookUrl, importCompleted, ImportCompletedEventJson.Options, cancellationToken);
 
             return response.IsSuccessStatusCode
                 ? Result.Ok(new NotificationReceipt(Strategy, true))

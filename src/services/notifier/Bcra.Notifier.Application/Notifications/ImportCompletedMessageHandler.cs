@@ -15,14 +15,12 @@ public sealed partial class ImportCompletedMessageHandler(
     IEnumerable<INotifier> notifiers,
     ILogger<ImportCompletedMessageHandler> logger)
 {
-    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<MessageProcessingOutcome> HandleAsync(string messageBody, CancellationToken cancellationToken)
     {
         ImportCompletedEvent? importCompleted;
         try
         {
-            importCompleted = JsonSerializer.Deserialize<ImportCompletedEvent>(messageBody, JsonOptions);
+            importCompleted = JsonSerializer.Deserialize<ImportCompletedEvent>(messageBody, ImportCompletedEventJson.Options);
         }
         catch (JsonException ex)
         {

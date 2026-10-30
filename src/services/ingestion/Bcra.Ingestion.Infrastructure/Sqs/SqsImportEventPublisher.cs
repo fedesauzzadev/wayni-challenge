@@ -13,8 +13,6 @@ public sealed partial class SqsImportEventPublisher(
     IOptions<SqsOptions> options,
     ILogger<SqsImportEventPublisher> logger) : IImportEventPublisher
 {
-    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task PublishAsync(ImportCompletedEvent importCompleted, CancellationToken cancellationToken)
     {
         var queueUrl = options.Value.ImportCompletedQueueUrl;
@@ -28,7 +26,7 @@ public sealed partial class SqsImportEventPublisher(
             new SendMessageRequest
             {
                 QueueUrl = queueUrl,
-                MessageBody = JsonSerializer.Serialize(importCompleted, JsonOptions)
+                MessageBody = JsonSerializer.Serialize(importCompleted, ImportCompletedEventJson.Options)
             },
             cancellationToken);
     }
