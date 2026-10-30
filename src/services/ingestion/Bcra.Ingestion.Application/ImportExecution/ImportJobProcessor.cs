@@ -100,17 +100,29 @@ public sealed partial class ImportJobProcessor(
         }
         catch (SourceChangedException ex)
         {
-            job.MarkFailed(clock.GetUtcNow());
-            await jobStore.SaveAsync(job, cancellationToken);
-            pipelineMeter.AddJobOutcome("failed");
+            var result = await MarkJobFailedAsync(job, cancellationToken);
             LogSourceChanged(job.Id, ex);
-            return new ImportProcessingResult(ImportProcessingOutcome.Failed, job.Id);
+            return result;
+        }
+        catch (FileNotFoundException ex)
+        {
+            var result = await MarkJobFailedAsync(job, cancellationToken);
+            LogSourceNotFound(job.Id, ex);
+            return result;
         }
         catch (DbException ex)
         {
             LogConnectionLost(job.Id, ex);
             return new ImportProcessingResult(ImportProcessingOutcome.AbortedByConnectionLoss, job.Id);
         }
+    }
+
+    private async Task<ImportProcessingResult> MarkJobFailedAsync(ImportJob job, CancellationToken cancellationToken)
+    {
+        job.MarkFailed(clock.GetUtcNow());
+        await jobStore.SaveAsync(job, cancellationToken);
+        pipelineMeter.AddJobOutcome("failed");
+        return new ImportProcessingResult(ImportProcessingOutcome.Failed, job.Id);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Database failure assumed to be connection loss while processing job {JobId}; aborting so another worker can reclaim it when the lease expires")]
@@ -133,6 +145,9 @@ public sealed partial class ImportJobProcessor(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} changed mid-import (ETag/size mismatch); the job is now Failed instead of retrying forever")]
     private partial void LogSourceChanged(Guid jobId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} was not found; the job is now Failed instead of retrying forever")]
+    private partial void LogSourceNotFound(Guid jobId, Exception exception);
 
     private async Task PublishCompletedEventAsync(ImportJob job, CancellationToken cancellationToken)
     {

@@ -1,3 +1,4 @@
+using System.Net;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Bcra.Ingestion.Application.Options;
@@ -9,6 +10,18 @@ namespace Bcra.Ingestion.Infrastructure.FileSources;
 public sealed class S3FileSource(IAmazonS3 s3, string bucket, string key) : IFileSource
 {
     public async Task<OpenedSource> OpenAsync(long byteOffset, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await OpenCoreAsync(byteOffset, cancellationToken);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new FileNotFoundException("Source object not found.", $"s3://{bucket}/{key}");
+        }
+    }
+
+    private async Task<OpenedSource> OpenCoreAsync(long byteOffset, CancellationToken cancellationToken)
     {
         var metadata = await s3.GetObjectMetadataAsync(bucket, key, cancellationToken);
         if (byteOffset < 0 || byteOffset > metadata.ContentLength)

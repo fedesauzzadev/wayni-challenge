@@ -177,6 +177,33 @@ public sealed class ResumptionTests(PostgresFixture fixture)
         reclaimed.Outcome.Should().Be(ImportProcessingOutcome.NothingToClaim, "Failed es terminal: no hay retry infinito con lease vencido");
     }
 
+    [Fact]
+    public async Task SourceDeletedBeforeClaim_MarksJobFailed_InsteadOfInfiniteRetry()
+    {
+        await fixture.ResetAsync();
+        var directory = Path.Combine(Path.GetTempPath(), "bcra-resume", Guid.NewGuid().ToString("N"));
+        var sample = SampleFiles.Write(directory, validLines: 50);
+        var options = Options(directory, batchSize: 50);
+        var repository = Repository;
+        var job = await QueueJobAsync(sample, repository);
+
+        File.Delete(sample.DeudoresPath);
+
+        var processor = ImportTestHarness.CreateProcessor(fixture, options);
+        var result = await processor.TryProcessNextAsync("worker-1", CancellationToken.None);
+
+        result.Outcome.Should().Be(ImportProcessingOutcome.Failed);
+        result.JobId.Should().Be(job.Id);
+
+        var final = await repository.GetByIdAsync(job.Id, CancellationToken.None);
+        final!.Status.Should().Be(ImportJobStatus.Failed);
+        final.IsTerminal.Should().BeTrue();
+        final.BytesCommitted.Should().Be(0);
+
+        var reclaimed = await processor.TryProcessNextAsync("worker-2", CancellationToken.None);
+        reclaimed.Outcome.Should().Be(ImportProcessingOutcome.NothingToClaim, "Failed es terminal: la fuente borrada no bloquea la cola con reclaims infinitos");
+    }
+
     private static async Task AssertAggregatesExactAsync(NpgsqlConnection connection, Guid jobId, SampleFiles.Sample sample)
     {
         var deudores = (await connection.QueryAsync<(string Cuit, decimal Suma)>(

@@ -15,7 +15,7 @@ Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de ses
 | Un solo import activo | Índice único parcial `uq_import_job_single_active` sobre estados `Loading`/`Aggregating`. Colisión (23505) → el job queda Pending y se reintenta, sin fallar. |
 | Worker caído / conexión perdida | Sin heartbeat, el lease vence (`heartbeat_at <= cutoff`); otro worker lo reclama vía SKIP LOCKED y retoma desde `bytes_committed`. El worker que pierde la conexión aborta sin confirmar nada más. |
 | Commit de lote a staging | El COPY binario del lote y el UPDATE del checkpoint (`bytes_committed`, líneas, etag/size, heartbeat) se confirman en UNA transacción READ COMMITTED: no existe lote en staging sin su checkpoint (reanudar no duplica filas). |
-| Fuente modificada al reanudar | Si al reabrir la fuente su ETag o size no coinciden con el job, termina `Failed` (no retry infinito con lease vencido). |
+| Fuente modificada al reanudar | Si al reabrir la fuente su ETag o size no coinciden con el job, o la fuente ya no existe (archivo/objeto borrado), termina `Failed` (no retry infinito con lease vencido). |
 | Renovar el lease | `UPDATE import_job SET heartbeat_at = now WHERE id = @id AND lease_owner = @owner AND status IN ('Loading','Aggregating')`. |
 | Swap de versión publicada | `UPDATE` de la fila única de `active_import` en transacción corta con `FOR UPDATE`; las lecturas del query-service son MVCC (ven la versión vieja o la nueva, nunca mixta). |
 | Índices del import nuevo | `CREATE INDEX` (no CONCURRENTLY) sobre la partición de staging y los agregados del import, ANTES del swap. |
