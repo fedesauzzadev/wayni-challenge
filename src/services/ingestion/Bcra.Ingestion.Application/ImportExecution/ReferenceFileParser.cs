@@ -4,7 +4,7 @@ using Bcra.Ingestion.Domain.Parsing;
 
 namespace Bcra.Ingestion.Application.ImportExecution;
 
-public sealed record EntidadReference(short Codigo, string Nombre);
+public sealed record EntidadReference(int Codigo, string Nombre);
 
 public sealed record DeudorNombreReference(string Cuit, string Nombre);
 
@@ -15,6 +15,9 @@ public sealed record DeudorNombreReference(string Cuit, string Nombre);
 /// </summary>
 public static class ReferenceFileParser
 {
+    /// <summary>Código de entidad BCRA: campo de 5 dígitos (Maeent.txt real llega hasta 72.622).</summary>
+    private const int MaxEntidad = 99_999;
+
     public static async IAsyncEnumerable<EntidadReference> ParseEntidadesAsync(
         Stream stream,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -25,10 +28,10 @@ public static class ReferenceFileParser
             var span = line.Line.Span;
             if (span.Length < 6)
                 continue;
-            if (!FixedWidthDigits.TryParse(span[..5], maxLength: 5, short.MaxValue, out var codigo))
+            if (!FixedWidthDigits.TryParse(span[..5], maxLength: 5, MaxEntidad, out var codigo))
                 continue;
 
-            yield return new EntidadReference((short)codigo, Encoding.Latin1.GetString(span[5..]).Trim());
+            yield return new EntidadReference(codigo, Encoding.Latin1.GetString(span[5..]).Trim());
         }
     }
 

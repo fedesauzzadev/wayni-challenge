@@ -534,7 +534,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       </tbody>
     </table>
 
-    <h3>Performance medida <span style="font-weight:400;color:var(--muted);font-size:.82rem">(dataset real de muestra <code>samples/deudores.txt</code>: ~5,9 GB, 34.385.567 líneas — 19.247.633 válidas + 15.137.934 rechazadas por el parser — sobre Docker Desktop, Postgres 16.4 compartiendo CPU)</span></h3>
+    <h3>Performance medida <span style="font-weight:400;color:var(--muted);font-size:.82rem">(dataset real de muestra <code>samples/deudores.txt</code>: ~5,9 GB, 34.385.567 líneas — 19.247.633 válidas + 15.137.934 rechazadas por el parser; medición previa al fix del acote <code>smallint</code> del código de entidad, que descartaba 15,1 M de líneas de entidades ≥ 32768 (p. ej. Naranja 45030, Toyota 44099); tras el fix quedan ~285 rechazos legítimos, los registros de control con marcador 98/99 — sobre Docker Desktop, Postgres 16.4 compartiendo CPU)</span></h3>
     <table>
       <thead><tr><th>Fase</th><th>Duración</th><th>Nota</th></tr></thead>
       <tbody>

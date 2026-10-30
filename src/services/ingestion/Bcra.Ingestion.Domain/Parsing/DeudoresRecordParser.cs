@@ -18,6 +18,9 @@ public sealed class DeudoresRecordParser
     private const int RecordMarkerOffset = 11;
     private const byte RecordMarkerDigit = DigitZero + 1;
 
+    /// <summary>Código de entidad BCRA: campo de 5 dígitos (Maeent.txt real llega hasta 72.622).</summary>
+    private const int MaxEntidad = 99_999;
+
     public static bool TryParse(ReadOnlySpan<byte> line, [NotNullWhen(true)] out ParsedDebtRecord? record)
     {
         record = null;
@@ -25,7 +28,7 @@ public sealed class DeudoresRecordParser
             return false;
         if (line[RecordMarkerOffset] != RecordMarkerDigit || line[RecordMarkerOffset + 1] != RecordMarkerDigit)
             return false;
-        if (!TryParseBounded(line[..5], short.MaxValue, out var entidad))
+        if (!TryParseBounded(line[..5], MaxEntidad, out var entidad))
             return false;
         if (!TryParseBounded(line[5..11], 9_999_999, out var periodo))
             return false;

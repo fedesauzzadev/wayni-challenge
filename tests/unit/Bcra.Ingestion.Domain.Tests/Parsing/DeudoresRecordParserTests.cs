@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Bcra.Ingestion.Domain.Parsing;
 using FluentAssertions;
@@ -109,6 +110,18 @@ public sealed class DeudoresRecordParserTests
         DeudoresRecordParser.TryParse(Line(monto: "1.0         "), out _).Should().BeFalse();
         DeudoresRecordParser.TryParse(Line(monto: "1,x         "), out _).Should().BeFalse();
         DeudoresRecordParser.TryParse(Line(monto: "            "), out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("45030")]
+    [InlineData("72621")]
+    [InlineData("99999")]
+    public void FiveDigitEntidadCode_Parses(string rawEntidad)
+    {
+        var parsed = DeudoresRecordParser.TryParse(Line(entidad: rawEntidad), out var record);
+
+        parsed.Should().BeTrue();
+        record!.Entidad.Should().Be(int.Parse(rawEntidad, CultureInfo.InvariantCulture));
     }
 
     [Fact]

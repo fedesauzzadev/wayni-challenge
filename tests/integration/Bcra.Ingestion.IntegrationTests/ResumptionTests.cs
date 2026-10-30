@@ -213,7 +213,7 @@ public sealed class ResumptionTests(PostgresFixture fixture)
         foreach (var (cuit, expected) in sample.PorCuit)
             deudores[cuit].Suma.Should().Be(expected.Suma, $"suma_total exacta del cuit {cuit} (sin inflar por re-ejecución)");
 
-        var entidades = (await connection.QueryAsync<(short Codigo, decimal Suma)>(
+        var entidades = (await connection.QueryAsync<(int Codigo, decimal Suma)>(
             "SELECT codigo_entidad, suma_total FROM entidad_agg WHERE import_id = @Id", new { Id = jobId }))
             .ToDictionary(row => row.Codigo);
         entidades.Should().HaveCount(sample.PorEntidad.Count);

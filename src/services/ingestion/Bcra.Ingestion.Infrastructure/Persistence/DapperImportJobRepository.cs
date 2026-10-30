@@ -391,7 +391,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
 
     private static async Task LoadEntidadesAsync(DbConnection connection, IAsyncEnumerable<EntidadReference> entidades, CancellationToken cancellationToken)
     {
-        var codigos = new List<short>();
+        var codigos = new List<int>();
         var nombres = new List<string>();
 
         await foreach (var (codigo, nombre) in entidades.WithCancellation(cancellationToken))
@@ -411,13 +411,13 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             await UpsertEntidadesAsync(connection, codigos, nombres, cancellationToken);
     }
 
-    private static Task<int> UpsertEntidadesAsync(DbConnection connection, List<short> codigos, List<string> nombres, CancellationToken cancellationToken)
+    private static Task<int> UpsertEntidadesAsync(DbConnection connection, List<int> codigos, List<string> nombres, CancellationToken cancellationToken)
     {
         var command = new CommandDefinition(
             """
             INSERT INTO entidad (codigo, nombre)
             SELECT codigo, nombre
-            FROM UNNEST(@Codigos::smallint[], @Nombres::text[]) AS t(codigo, nombre)
+            FROM UNNEST(@Codigos::int[], @Nombres::text[]) AS t(codigo, nombre)
             ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre;
             """,
             new { Codigos = codigos.ToArray(), Nombres = nombres.ToArray() },

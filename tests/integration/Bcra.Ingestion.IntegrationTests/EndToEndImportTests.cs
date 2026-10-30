@@ -81,14 +81,14 @@ public sealed class EndToEndImportTests(PostgresFixture fixture)
                 row.SumaTotal.Should().Be(expected.Suma, $"suma_total del cuit {cuit}");
             }
 
-            var entidadRows = (await connection.QueryAsync<(short CodigoEntidad, decimal SumaTotal)>(
+            var entidadRows = (await connection.QueryAsync<(int CodigoEntidad, decimal SumaTotal)>(
                 "SELECT codigo_entidad, suma_total FROM entidad_agg WHERE import_id = @Id", new { Id = job.Id }))
                 .ToDictionary(row => row.CodigoEntidad);
             entidadRows.Should().HaveCount(sample.PorEntidad.Count);
             foreach (var (codigo, expectedSuma) in sample.PorEntidad)
                 entidadRows[codigo].SumaTotal.Should().Be(expectedSuma, $"suma_total de la entidad {codigo}");
 
-            var entidades = (await connection.QueryAsync<(short Codigo, string Nombre)>(
+            var entidades = (await connection.QueryAsync<(int Codigo, string Nombre)>(
                 "SELECT codigo, nombre FROM entidad ORDER BY codigo")).ToList();
             entidades.Should().HaveCount(SampleFiles.Entidades.Length);
             entidades.Should().Contain((SampleFiles.Entidades[0], "ENTIDAD 7 ÁÉÍ"));
@@ -193,12 +193,13 @@ internal static class ImportTestHarness
         IStagingBatchCommitter? batchCommitter = null,
         IImportEventPublisher? eventPublisher = null,
         ISituacionAggregationStrategy? situacionStrategy = null,
-        ILogger<ImportJobProcessor>? logger = null)
+        ILogger<ImportJobProcessor>? logger = null,
+        IImportJobStore? jobStore = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
         return new ImportJobProcessor(
-            repository,
+            jobStore ?? repository,
             repository,
             repository,
             new LocalFileSourceFactory(optionsSnapshot),
@@ -242,7 +243,7 @@ internal static class ImportTestHarness
 
 internal static class SampleFiles
 {
-    public static readonly short[] Entidades = [7, 11, 15, 27, 40];
+    public static readonly int[] Entidades = [7, 11, 15, 27, 40, 45030];
     private static readonly short[] Situaciones = [1, 2, 3, 4, 5, 11, 21, 23];
 
     public sealed record Sample(
@@ -252,23 +253,23 @@ internal static class SampleFiles
         int ValidLines,
         int RejectedLines,
         IReadOnlyDictionary<string, (short SituacionMaxima, decimal Suma)> PorCuit,
-        IReadOnlyDictionary<short, decimal> PorEntidad);
+        IReadOnlyDictionary<int, decimal> PorEntidad);
 
     public static Sample Write(
         string directory,
         int validLines,
         int rejectedLines = 0,
         int seed = 20231101,
-        IReadOnlyList<(string Cuit, short Entidad, short Situacion, decimal Monto)>? fixedLines = null)
+        IReadOnlyList<(string Cuit, int Entidad, short Situacion, decimal Monto)>? fixedLines = null)
     {
         Directory.CreateDirectory(directory);
         var rand = new Random(seed);
         var cuits = Enumerable.Range(0, 25).Select(i => $"2{i:D10}").ToArray();
         var porCuit = new Dictionary<string, (short SituacionMaxima, decimal Suma)>();
-        var porEntidad = new Dictionary<short, decimal>();
+        var porEntidad = new Dictionary<int, decimal>();
         var content = new StringBuilder();
 
-        void AppendValidLine(short entidad, string cuit, short situacion, decimal monto)
+        void AppendValidLine(int entidad, string cuit, short situacion, decimal monto)
         {
             content.Append(BuildLine(entidad, cuit, situacion, FormatMonto(monto))).Append('\n');
             var current = porCuit.GetValueOrDefault(cuit);
@@ -326,7 +327,7 @@ internal static class SampleFiles
     }
 
     public static string BuildLine(
-        short entidad,
+        int entidad,
         string cuit,
         short situacion,
         string montoRaw,

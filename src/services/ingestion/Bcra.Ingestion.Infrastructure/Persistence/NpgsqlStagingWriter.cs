@@ -26,7 +26,7 @@ public static class NpgsqlStagingWriter
             {
                 importer.StartRow();
                 importer.Write(importId, NpgsqlDbType.Uuid);
-                importer.Write((short)record.Entidad, NpgsqlDbType.Smallint);
+                importer.Write(record.Entidad, NpgsqlDbType.Integer);
                 importer.Write(record.Cuit, NpgsqlDbType.Char);
                 importer.Write(record.Situacion, NpgsqlDbType.Smallint);
                 importer.Write(record.Monto, NpgsqlDbType.Numeric);

@@ -44,6 +44,7 @@ curl http://localhost:18082/metrics                             # métricas noti
 curl http://localhost:9090/api/v1/targets                       # 3 targets en "up"
 
 npm run setup                                                   # admin UI: stack docker + BFF (:4000) + web (:5173) + browser
+npm run rebuild                                                 # rebuild+restart de los servicios .NET (o pasales nombres: "npm run rebuild ingestion")
 npm test                                                        # en frontend/bff y frontend/web (vitest)
 ```
 
@@ -81,7 +82,7 @@ El dashboard de Grafana muestra: import en curso (Loading/Aggregating), líneas/
 
 ## Performance
 
-Medición con el dataset real de muestra (`samples/deudores.txt`, ~5.9 GB, 34,385,567 líneas: 19,247,633 válidas + 15,137,934 rechazadas por el parser), sobre Docker Desktop (Postgres 16.4 compartiendo CPU con otros stacks):
+Medición con el dataset real de muestra (`samples/deudores.txt`, ~5.9 GB, 34,385,567 líneas: 19,247,633 válidas + 15,137,934 rechazadas por el parser — medición previa al fix del acote `smallint` del código de entidad, que descartaba como inválidas 15,1 M de líneas de entidades ≥ 32768, p. ej. Naranja 45030 o Toyota 44099; tras el fix quedan ~285 rechazos legítimos, los registros de control con marcador 98/99), sobre Docker Desktop (Postgres 16.4 compartiendo CPU con otros stacks):
 
 | Fase | Duración | Nota |
 |---|---|---|

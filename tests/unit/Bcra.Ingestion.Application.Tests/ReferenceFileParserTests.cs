@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Bcra.Ingestion.Application.ImportExecution;
 using FluentAssertions;
@@ -45,14 +46,25 @@ public class ReferenceFileParserTests
         [Theory]
         [InlineData("AB123NOMBRE")]              // código no numérico
         [InlineData("00  7NOMBRE")]              // el parser fixed-width no acepta espacios intercalados
-        [InlineData("99999NOMBRE DEMASIADO LARGO PARA SHORT")] // valor > short.MaxValue
-        public async Task SkipsLinesWithNonNumericOrOutOfRangeCodigo(string line)
+        public async Task SkipsLinesWithNonNumericCodigo(string line)
         {
             await using var stream = Latin1Stream(line);
 
             var entidades = await ToListAsync(ReferenceFileParser.ParseEntidadesAsync(stream, CancellationToken.None));
 
             entidades.Should().BeEmpty();
+        }
+
+        [Theory]
+        [InlineData("45030NARANJA DIGITAL")]
+        [InlineData("99999ENTIDAD TOPE")]
+        public async Task FiveDigitCodigo_Parses(string line)
+        {
+            await using var stream = Latin1Stream(line);
+
+            var entidades = await ToListAsync(ReferenceFileParser.ParseEntidadesAsync(stream, CancellationToken.None));
+
+            entidades.Should().ContainSingle().Which.Codigo.Should().Be(int.Parse(line[..5], CultureInfo.InvariantCulture));
         }
 
         [Fact]
