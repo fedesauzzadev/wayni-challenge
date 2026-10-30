@@ -1,5 +1,6 @@
 using Amazon.SQS;
 using Bcra.Notifier.Application.Notifiers;
+using Bcra.Notifier.Application.Ports;
 using Bcra.Notifier.Infrastructure.Notifiers;
 using Bcra.Notifier.Infrastructure.Sqs;
 using Bcra.Shared.Infrastructure;
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddValidatedOptions<AwsOptions>(configuration, AwsOptions.SectionName);
         services.AddValidatedOptions<SqsOptions>(configuration, SqsOptions.SectionName);
         services.AddValidatedOptions<NotificationsOptions>(configuration, NotificationsOptions.SectionName);
+        services.AddValidatedOptions<EmailOptions>(configuration, EmailOptions.SectionName);
 
         services.AddSingleton<IAmazonSQS>(sp =>
             AwsClientFactory.CreateSqsClient(sp.GetRequiredService<IOptions<AwsOptions>>().Value));
@@ -31,6 +33,13 @@ public static class DependencyInjection
                 client.Timeout = TimeSpan.FromSeconds(
                     sp.GetRequiredService<IOptions<NotificationsOptions>>().Value.TimeoutSeconds));
             services.AddSingleton<INotifier, WebhookNotifier>();
+        }
+
+        var emailTo = configuration[$"{EmailOptions.SectionName}:{nameof(EmailOptions.To)}"];
+        if (!string.IsNullOrWhiteSpace(emailTo))
+        {
+            services.AddSingleton<ISmtpTransport, MailKitSmtpTransport>();
+            services.AddSingleton<INotifier, EmailNotifier>();
         }
 
         services.AddHealthChecks().AddCheck<SqsHealthCheck>("sqs");

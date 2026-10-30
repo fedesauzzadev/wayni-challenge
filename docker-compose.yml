@@ -84,7 +84,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ingestion-api:
+  mailpit:
+    image: axllent/mailpit:v1.32
+    container_name: bcra-mailpit
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    networks:
+      - bcra
+
+  ingestion-api:
         condition: service_started
     networks:
       - bcra
@@ -105,10 +114,18 @@ services:
       AWS__SecretAccessKey: ${AWS_SECRET_ACCESS_KEY:-test}
       Sqs__ImportCompletedQueueUrl: ${SQS_IMPORT_COMPLETED_URL:-}
       Notifications__WebhookUrl: ${WEBHOOK_URL:-}
+      Notifications__Email__To: ${NOTIFICATIONS__EMAIL__TO:-fede.sauzza.dev@gmail.com}
+      Notifications__Email__Host: ${SMTP_HOST:-mailpit}
+      Notifications__Email__Port: ${SMTP_PORT:-1025}
+      Notifications__Email__EnableSsl: ${SMTP_SSL:-false}
+      Notifications__Email__Username: ${SMTP_USER:-}
+      Notifications__Email__Password: ${SMTP_PASSWORD:-}
     ports:
       - "${NOTIFIER_API_PORT:-18082}:8080"
     depends_on:
       localstack:
+        condition: service_started
+      mailpit:
         condition: service_started
     networks:
       - bcra
