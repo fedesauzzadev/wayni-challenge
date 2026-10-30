@@ -35,14 +35,14 @@ app.MapGet("/deudores/{cuit}", async (string cuit, GetDeudorByCuitHandler handle
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
-app.MapGet("/deudores", async (int? top, bool? omitirSinNombre, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
+app.MapGet("/deudores", async (int? offset, int? limit, int? top, bool? omitirSinNombre, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
     {
-        var result = await handler.HandleAsync(new GetTopDeudoresQuery(top, omitirSinNombre ?? false), cancellationToken);
+        var result = await handler.HandleAsync(new GetTopDeudoresQuery(offset, limit, top, omitirSinNombre ?? false), cancellationToken);
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetTopDeudores")
     .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
-    .Produces<IReadOnlyList<DeudorResumenResponse>>(StatusCodes.Status200OK)
+    .Produces<DeudoresPageResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 

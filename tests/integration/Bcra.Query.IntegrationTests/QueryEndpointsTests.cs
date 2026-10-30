@@ -53,17 +53,22 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
     }
 
     [Fact]
-    public async Task WithActiveImport_GetTopDeudores_OrdersBySumaTotalDesc_AndCapsToTopMax()
+    public async Task WithActiveImport_GetTopDeudores_ReturnsPageEnvelope_AndCapsLimitToTopMax()
     {
         await fixture.ResetAsync();
         await fixture.SeedActiveImportAsync();
         using var client = fixture.CreateClient();
 
-        using var response = await client.GetAsync("/deudores?top=10");
+        using var response = await client.GetAsync("/deudores?limit=10");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var deudores = await response.Content.ReadFromJsonAsync<JsonElement>();
-        deudores.GetArrayLength().Should().Be(2, "TopMax=2 acota el top pedido");
+        var page = await response.Content.ReadFromJsonAsync<JsonElement>();
+        page.GetProperty("total").GetInt64().Should().Be(4, "total es la cantidad de deudores del import");
+        page.GetProperty("offset").GetInt32().Should().Be(0, "offset default es 0");
+        page.GetProperty("limit").GetInt32().Should().Be(2, "TopMax=2 acota el limit pedido");
+
+        var deudores = page.GetProperty("items");
+        deudores.GetArrayLength().Should().Be(2, "TopMax=2 acota el limit pedido");
 
         var sums = deudores.EnumerateArray()
             .Select(deudor => deudor.GetProperty("sumaTotalPrestamos").GetDecimal())
@@ -74,13 +79,69 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         deudores.EnumerateArray()
             .Last()
             .GetProperty("nombre").ValueKind.Should().Be(JsonValueKind.Null, "por defecto incluye deudores sin nombre");
-
-        using var invalid = await client.GetAsync("/deudores?top=0");
-        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task WithActiveImport_GetTopDeudores_OmitirSinNombre_ExcludesUnnamedDeudores()
+    public async Task WithActiveImport_GetTopDeudores_PaginatesWithOffsetAndLimit_WithoutDuplicatesOrGaps()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var first = await client.GetAsync("/deudores?offset=0&limit=2");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        var pageOne = await first.Content.ReadFromJsonAsync<JsonElement>();
+        pageOne.GetProperty("total").GetInt64().Should().Be(4);
+        pageOne.GetProperty("offset").GetInt32().Should().Be(0);
+        pageOne.GetProperty("limit").GetInt32().Should().Be(2);
+        pageOne.GetProperty("items").EnumerateArray()
+            .Select(deudor => deudor.GetProperty("cuit").GetString())
+            .Should().Equal(["20123456784", "20987654321"], "página 1 son los dos mayores por suma_total DESC");
+
+        using var second = await client.GetAsync("/deudores?offset=2&limit=2");
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var pageTwo = await second.Content.ReadFromJsonAsync<JsonElement>();
+        pageTwo.GetProperty("total").GetInt64().Should().Be(4);
+        pageTwo.GetProperty("offset").GetInt32().Should().Be(2);
+        pageTwo.GetProperty("limit").GetInt32().Should().Be(2);
+        pageTwo.GetProperty("items").EnumerateArray()
+            .Select(deudor => deudor.GetProperty("cuit").GetString())
+            .Should().Equal(["20000000009", "27000000008"], "página 2 continúa donde termina la página 1");
+
+        using var beyond = await client.GetAsync("/deudores?offset=99&limit=2");
+        beyond.StatusCode.Should().Be(HttpStatusCode.OK, "offset mayor que total responde 200");
+        var empty = await beyond.Content.ReadFromJsonAsync<JsonElement>();
+        empty.GetProperty("total").GetInt64().Should().Be(4);
+        empty.GetProperty("offset").GetInt32().Should().Be(99);
+        empty.GetProperty("items").GetArrayLength().Should().Be(0, "offset fuera de rango devuelve items vacío");
+    }
+
+    [Fact]
+    public async Task WithActiveImport_GetTopDeudores_TopAliasFallsBackToLimit_AndValidatesParams()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var aliased = await client.GetAsync("/deudores?top=1");
+        aliased.StatusCode.Should().Be(HttpStatusCode.OK);
+        var topPage = await aliased.Content.ReadFromJsonAsync<JsonElement>();
+        topPage.GetProperty("limit").GetInt32().Should().Be(1, "top actúa como alias de limit");
+        topPage.GetProperty("items").GetArrayLength().Should().Be(1);
+        topPage.GetProperty("items")[0].GetProperty("cuit").GetString().Should().Be("20123456784");
+
+        using var both = await client.GetAsync("/deudores?limit=1&top=2");
+        both.StatusCode.Should().Be(HttpStatusCode.OK);
+        var bothPage = await both.Content.ReadFromJsonAsync<JsonElement>();
+        bothPage.GetProperty("limit").GetInt32().Should().Be(1, "si viene limit se usa limit y top se ignora");
+
+        await AssertProblemAsync(client, "/deudores?top=0", "Query.InvalidTop");
+        await AssertProblemAsync(client, "/deudores?limit=0", "Query.InvalidLimit");
+        await AssertProblemAsync(client, "/deudores?offset=-1", "Query.InvalidOffset");
+    }
+
+    [Fact]
+    public async Task WithActiveImport_GetTopDeudores_OmitirSinNombre_ExcludesUnnamedDeudores_AndAdjustsTotal()
     {
         await fixture.ResetAsync();
         await fixture.SeedActiveImportAsync();
@@ -90,16 +151,18 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         omitted.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var filtered = await omitted.Content.ReadFromJsonAsync<JsonElement>();
-        filtered.GetArrayLength().Should().Be(1, "solo el deudor con nombre queda dentro del TopMax");
-        filtered[0].GetProperty("cuit").GetString().Should().Be("20123456784");
-        filtered[0].GetProperty("nombre").GetString().Should().Be("PEREZ JUAN CARLOS");
+        filtered.GetProperty("total").GetInt64().Should().Be(1, "total respeta el filtro omitirSinNombre");
+        filtered.GetProperty("items").GetArrayLength().Should().Be(1, "solo el deudor con nombre queda dentro del TopMax");
+        filtered.GetProperty("items")[0].GetProperty("cuit").GetString().Should().Be("20123456784");
+        filtered.GetProperty("items")[0].GetProperty("nombre").GetString().Should().Be("PEREZ JUAN CARLOS");
 
         using var included = await client.GetAsync("/deudores?omitirSinNombre=false");
         included.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var all = await included.Content.ReadFromJsonAsync<JsonElement>();
-        all.GetArrayLength().Should().Be(2, "TopMax=2 acota el top pedido");
-        all.EnumerateArray()
+        all.GetProperty("total").GetInt64().Should().Be(4, "sin filtro el total cuenta todos los deudores");
+        all.GetProperty("items").GetArrayLength().Should().Be(2, "TopMax=2 acota el limit pedido");
+        all.GetProperty("items").EnumerateArray()
             .Last()
             .GetProperty("nombre").ValueKind.Should().Be(JsonValueKind.Null, "omitirSinNombre=false se comporta como el default");
 
@@ -144,5 +207,15 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         using var ready = await client.GetAsync("/health/ready");
         var body = await ready.Content.ReadAsStringAsync();
         body.Should().Contain("Healthy", "con import activo el servicio está healthy");
+    }
+
+    private static async Task AssertProblemAsync(HttpClient client, string path, string expectedTitle)
+    {
+        using var response = await client.GetAsync(path);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"'{path}' responde 400");
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("title").GetString().Should().Be(expectedTitle);
     }
 }

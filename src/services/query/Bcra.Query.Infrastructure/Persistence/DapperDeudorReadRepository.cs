@@ -32,24 +32,31 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
         return row?.ToReadModel();
     }
 
-    public async Task<IReadOnlyList<DeudorResumen>> GetTopDeudoresAsync(Guid importId, int count, bool omitirSinNombre, CancellationToken cancellationToken)
+    public async Task<DeudoresPage> GetDeudoresPageAsync(Guid importId, int offset, int limit, bool omitirSinNombre, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         var nombreFilter = omitirSinNombre ? " AND n.nombre IS NOT NULL" : string.Empty;
         var command = new CommandDefinition(
             $"""
+            SELECT COUNT(*)::bigint
+            FROM deudor_agg d
+            LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
+            WHERE d.import_id = @ImportId{nombreFilter};
+
             SELECT {SelectColumns}
             FROM deudor_agg d
             LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
             WHERE d.import_id = @ImportId{nombreFilter}
             ORDER BY d.suma_total DESC, d.cuit ASC
-            LIMIT @Count
+            LIMIT @Limit OFFSET @Offset;
             """,
-            new { ImportId = importId, Count = count },
+            new { ImportId = importId, Limit = limit, Offset = offset },
             cancellationToken: cancellationToken);
 
-        var rows = await connection.QueryAsync<DeudorRow>(command);
-        return rows.Select(row => row.ToReadModel()).ToList();
+        using var multi = await connection.QueryMultipleAsync(command);
+        var total = await multi.ReadFirstAsync<long>();
+        var rows = await multi.ReadAsync<DeudorRow>();
+        return new DeudoresPage(total, rows.Select(row => row.ToReadModel()).ToList());
     }
 
     public async Task<DeudorTotales> GetTotalesAsync(Guid importId, CancellationToken cancellationToken)

@@ -73,6 +73,30 @@
         "operationId": "GetTopDeudores",
         "parameters": [
           {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
             "name": "top",
             "in": "query",
             "schema": {
@@ -98,10 +122,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeudorResumenResponse"
-                  }
+                  "$ref": "#/components/schemas/DeudoresPageResponse"
                 }
               }
             }
@@ -244,6 +265,47 @@
   },
   "components": {
     "schemas": {
+      "DeudoresPageResponse": {
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "offset": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "limit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeudorResumenResponse"
+            }
+          }
+        }
+      },
       "DeudorResumenResponse": {
         "required": [
           "cuit",
