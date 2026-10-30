@@ -6,16 +6,25 @@ function Progress({
   className,
   value,
   indicatorClassName,
+  indeterminate = false,
   ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root> & { indicatorClassName?: string }) {
+}: React.ComponentProps<typeof ProgressPrimitive.Root> & {
+  indicatorClassName?: string;
+  /** Sin % conocible (p. ej. Aggregating): la barra pulsa deslizándose en loop. */
+  indeterminate?: boolean;
+}) {
   return (
     <ProgressPrimitive.Root
       className={cn("relative h-2 w-full overflow-hidden rounded-full bg-secondary", className)}
       {...props}
     >
       <ProgressPrimitive.Indicator
-        className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
-        style={{ transform: `translateX(-${100 - (value ?? 0)}%)` }}
+        className={cn(
+          "h-full w-full flex-1 bg-primary transition-all",
+          indeterminate && "progress-indeterminate",
+          indicatorClassName,
+        )}
+        style={indeterminate ? undefined : { transform: `translateX(-${100 - (value ?? 0)}%)` }}
       />
     </ProgressPrimitive.Root>
   );

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileClock, FileUp, HardDriveUpload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
+import { ActivityLog, type ActivityEntry, type ActivityLevel } from "@/components/ActivityLog";
 import { RecipientesEmail } from "@/components/RecipientesEmail";
 import { StatCard } from "@/components/StatCard";
 import { UploadProgress, type UploadPhase } from "@/components/UploadProgress";
@@ -23,9 +24,14 @@ import {
   formatNumber,
   formatPeriodo,
 } from "@/lib/format";
+import { clearSession, loadLog, loadSession, saveLog, saveSession } from "@/lib/uploadSession";
 import { TERMINAL_STATUSES, type ImportStatus } from "@/api/types";
 
 const POLL_INTERVAL_MS = 2000;
+/** Ventana para adoptar un import no-terminal de /imports/latest al cargar la página. */
+const ADOPT_FRESHNESS_MS = 6 * 60 * 60 * 1000;
+const TRANSFER_MILESTONES = [10, 25, 50, 75, 90, 100];
+const LOADING_MILESTONE_STEP = 25;
 
 type StorageMode = "local" | "s3";
 
@@ -56,9 +62,27 @@ export function ArchivoPage() {
   const [processingPercent, setProcessingPercent] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("");
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
+  // Nombre/tamaño para la UI aunque el File en sí no se pueda restaurar tras un F5.
+  const [fileMeta, setFileMeta] = useState<{ name: string; size: number } | null>(() => {
+    const session = loadSession();
+    return session ? { name: session.fileName, size: session.fileSize } : null;
+  });
+  const [log, setLog] = useState<ActivityEntry[]>(() => loadLog());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maeentInputRef = useRef<HTMLInputElement>(null);
   const nomdeuInputRef = useRef<HTMLInputElement>(null);
+  const nextMilestoneRef = useRef(0);
+  const lastLoadingMilestoneRef = useRef(0);
+  const prevStatusRef = useRef<ImportStatus["status"] | null>(null);
+  const adoptedRef = useRef(false);
+
+  const appendLog = useCallback((level: ActivityLevel, message: string) => {
+    setLog((prev) => {
+      const next = [...prev, { at: Date.now(), level, message }];
+      saveLog(next);
+      return next;
+    });
+  }, []);
 
   // Fase (b): polling del estado del import hasta estado terminal.
   const statusQuery = useQuery({
@@ -71,6 +95,44 @@ export function ArchivoPage() {
     },
   });
 
+  // Recuperación tras F5: si hay un import activo en sesión, se retoma el seguimiento.
+  useEffect(() => {
+    const session = loadSession();
+    if (session?.importId) {
+      setActiveImportId(session.importId);
+      setPhase("processing");
+      appendLog(
+        "info",
+        `Sesión restaurada tras recargar la página: reanudando el seguimiento del import ${shortId(session.importId)}.`,
+      );
+    } else if (session && Date.now() - session.startedAt < 60 * 60 * 1000) {
+      // La transferencia murió con la página y el import nunca se encoló del lado del server.
+      clearSession();
+      appendLog(
+        "error",
+        `La transferencia de ${session.fileName} se interrumpió al recargar la página: el import nunca llegó a encolarse. Subilo de nuevo.`,
+      );
+    }
+  }, [appendLog]);
+
+  // Recuperación sin sesión: si el último import está corriendo (empezado en otra pestaña o
+  // terminal), se adopta para mostrar su progreso.
+  useEffect(() => {
+    if (adoptedRef.current || activeImportId) return;
+    const latest = latestQuery.data?.latest;
+    if (!latest || TERMINAL_STATUSES.includes(latest.status)) return;
+    if (Date.now() - Date.parse(latest.createdAtUtc) > ADOPT_FRESHNESS_MS) return;
+
+    adoptedRef.current = true;
+    setActiveImportId(latest.id);
+    setPhase("processing");
+    setFileMeta({ name: sourceFileName(latest.source), size: latest.size });
+    appendLog(
+      "info",
+      `Import en curso detectado (${latest.status}, ${shortId(latest.id)}): reanudando el seguimiento.`,
+    );
+  }, [latestQuery.data, activeImportId, appendLog]);
+
   useEffect(() => {
     const status = statusQuery.data;
     if (!status || !activeImportId) return;
@@ -78,18 +140,48 @@ export function ArchivoPage() {
     setProcessingPercent(status.loadingProgressPercent ?? (status.status === "Completed" ? 100 : 0));
     setStatusText(describeStatus(status));
 
+    if (prevStatusRef.current !== status.status) {
+      prevStatusRef.current = status.status;
+      appendLog(statusLevel(status.status), describeStatus(status));
+    } else if (status.status === "Loading") {
+      const percent = status.loadingProgressPercent ?? 0;
+      if (percent >= lastLoadingMilestoneRef.current + LOADING_MILESTONE_STEP) {
+        lastLoadingMilestoneRef.current = percent - (percent % LOADING_MILESTONE_STEP);
+        appendLog("progress", describeStatus(status));
+      }
+    }
+
     if (status.status === "Completed") {
       setPhase("completed");
+      appendLog(
+        "success",
+        `Import completado en ${formatDuration(status.finishedAtUtc && status.startedAtUtc ? Date.parse(status.finishedAtUtc) - Date.parse(status.startedAtUtc) : null)}. Revisá Mailpit para ver la notificación.`,
+      );
       toast.success("Import completado. Revisá Mailpit para ver la notificación.");
       setActiveImportId(null);
+      clearSession();
       queryClient.invalidateQueries({ queryKey: ["imports", "latest"] });
     } else if (status.status === "Failed") {
       setPhase("failed");
+      appendLog("error", "El import terminó en estado Failed. Revisá los logs del ingestion.");
       toast.error("El import falló. Revisá el detalle en la pestaña o los logs del ingestion.");
       setActiveImportId(null);
+      clearSession();
       queryClient.invalidateQueries({ queryKey: ["imports", "latest"] });
     }
-  }, [statusQuery.data, activeImportId, queryClient]);
+  }, [statusQuery.data, activeImportId, appendLog, queryClient]);
+
+  const handleUploadProgress = useCallback(
+    (percent: number) => {
+      setUploadPercent(percent);
+      const milestone = TRANSFER_MILESTONES[nextMilestoneRef.current];
+      if (milestone !== undefined && percent >= milestone) {
+        nextMilestoneRef.current += 1;
+        appendLog("progress", `Transfiriendo el archivo al servidor: ${percent}%.`);
+      }
+    },
+    [appendLog],
+  );
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -97,12 +189,17 @@ export function ArchivoPage() {
       setPhase("uploading");
       setUploadPercent(0);
       setProcessingPercent(null);
+      nextMilestoneRef.current = 0;
       setStatusText(
         storage === "s3"
           ? "Subiendo el archivo al bucket de S3 (LocalStack)…"
           : "Transfiriendo el archivo al ingestion (directo, sin S3)…",
       );
-      return api.uploadFile(file, Number(periodo), setUploadPercent, { maeent, nomdeu }, storage);
+      appendLog(
+        "info",
+        `Carga iniciada: ${file.name} (${formatBytes(file.size)}, periodo ${periodo}, ${storage === "s3" ? "vía S3" : "entrega directa"}).`,
+      );
+      return api.uploadFile(file, Number(periodo), handleUploadProgress, { maeent, nomdeu }, storage);
     },
     onSuccess: (result) => {
       setPhase("processing");
@@ -112,11 +209,31 @@ export function ArchivoPage() {
           ? "El archivo ya estaba importado (idempotencia source+etag+periodo); se consulta su estado…"
           : "Archivo entregado. Import encolado en el ingestion; se consulta el progreso…",
       );
+      if (file) {
+        setFileMeta({ name: file.name, size: file.size });
+        saveSession({
+          importId: result.importId,
+          fileName: file.name,
+          fileSize: file.size,
+          storage,
+          startedAt: Date.now(),
+        });
+      }
+      appendLog("success", `Archivo entregado: ${result.source}.`);
+      appendLog(
+        result.alreadyExisted ? "info" : "progress",
+        result.alreadyExisted
+          ? `Ya existía un import idéntico (source+etag+periodo): se consulta el estado de ${shortId(result.importId ?? "")}.`
+          : `Import encolado en el ingestion: ${shortId(result.importId ?? "")}.`,
+      );
+      prevStatusRef.current = null;
+      lastLoadingMilestoneRef.current = 0;
       setActiveImportId(result.importId);
     },
     onError: (error: Error) => {
       setPhase("failed");
       setStatusText(error.message);
+      appendLog("error", `Carga fallida: ${error.message}`);
       toast.error(`Upload fallido: ${error.message}`);
     },
   });
@@ -175,7 +292,12 @@ export function ArchivoPage() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                setFile(event.target.files?.[0] ?? null);
+                if (event.target.files?.[0]) {
+                  setFileMeta({ name: event.target.files[0].name, size: event.target.files[0].size });
+                }
+              }}
             />
             <input
               ref={maeentInputRef}
@@ -258,17 +380,20 @@ export function ArchivoPage() {
 
           <p className="text-xs text-muted-foreground">{storageDescriptions[storage]}</p>
 
-          {file && phase && (
+          {fileMeta && phase && (
             <UploadProgress
               phase={phase}
               uploadPercent={uploadPercent}
+              importStatus={statusQuery.data?.status ?? (phase === "processing" ? "Pending" : null)}
               processingPercent={processingPercent}
-              fileName={file.name}
-              fileSize={file.size}
+              fileName={fileMeta.name}
+              fileSize={fileMeta.size}
               statusText={statusText}
               uploadLabel={storage === "s3" ? "Subida a S3 (LocalStack)" : "Entrega directa al ingestion"}
             />
           )}
+
+          {log.length > 0 && <ActivityLog entries={log} />}
         </CardContent>
       </Card>
 
@@ -326,6 +451,28 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 
 function defaultPeriodo(now = new Date()): string {
   return String(now.getUTCFullYear() * 100 + now.getUTCMonth() + 1);
+}
+
+function shortId(id: string): string {
+  return id ? `${id.slice(0, 8)}…` : "?";
+}
+
+function sourceFileName(source: string): string {
+  const segments = source.split("/");
+  return segments[segments.length - 1] || source;
+}
+
+function statusLevel(status: ImportStatus["status"]): ActivityLevel {
+  switch (status) {
+    case "Completed":
+      return "success";
+    case "Failed":
+      return "error";
+    case "Loading":
+    case "Aggregating":
+    case "Pending":
+      return "progress";
+  }
 }
 
 function describeStatus(status: ImportStatus): string {

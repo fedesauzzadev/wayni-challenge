@@ -3,14 +3,17 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { ImportStatus } from "@/api/types";
 
 export type UploadPhase = "uploading" | "processing" | "completed" | "failed";
 
 export interface UploadProgressProps {
   phase: UploadPhase;
-  /** 0-100 de la fase (a): subida del archivo al BFF/S3. */
+  /** 0-100 de la transferencia navegador→BFF (lo único medible de la fase (a)). */
   uploadPercent: number;
-  /** 0-100 de la fase (b): progreso del import (loadingProgressPercent del backend). */
+  /** Estado actual del job según el ingestion; null mientras no exista job. */
+  importStatus: ImportStatus["status"] | null;
+  /** loadingProgressPercent del backend durante Loading. */
   processingPercent: number | null;
   fileName: string;
   fileSize: number;
@@ -20,7 +23,7 @@ export interface UploadProgressProps {
 }
 
 const phaseLabels: Record<UploadPhase, string> = {
-  uploading: "Subiendo archivo a S3",
+  uploading: "Entregando archivo",
   processing: "Procesando import",
   completed: "Import completado",
   failed: "El import falló",
@@ -29,6 +32,7 @@ const phaseLabels: Record<UploadPhase, string> = {
 export function UploadProgress({
   phase,
   uploadPercent,
+  importStatus,
   processingPercent,
   fileName,
   fileSize,
@@ -36,7 +40,19 @@ export function UploadProgress({
   uploadLabel,
 }: UploadProgressProps) {
   const uploadingDone = phase !== "uploading";
-  const globalProcessing = processingPercent ?? 0;
+  // Fase (a): durante la transferencia hay % real; al llegar a 100 el BFF todavía tiene que
+  // hashear/copiar y encolar → indeterminado hasta que llega la respuesta.
+  const transferIndeterminate = phase === "uploading" && uploadPercent >= 100;
+
+  // Fase (b): solo Loading tiene % medible; Pending/Aggregating son indeterminados.
+  let processingIndeterminate = false;
+  let processingValue = uploadingDone ? (phase === "completed" ? 100 : 0) : 0;
+  if (importStatus === "Pending" || importStatus === "Aggregating") {
+    processingIndeterminate = true;
+    processingValue = 0;
+  } else if (importStatus === "Loading") {
+    processingValue = processingPercent ?? 0;
+  }
 
   return (
     <section className="space-y-3 rounded-xl border bg-card p-5" aria-live="polite">
@@ -60,16 +76,17 @@ export function UploadProgress({
       <PhaseRow
         icon={<CloudUpload className="size-4" />}
         label={uploadLabel}
+        percent={transferIndeterminate ? null : uploadPercent}
         done={uploadingDone}
         active={phase === "uploading"}
-        percent={uploadPercent}
+        failed={phase === "failed"}
       />
       <PhaseRow
         icon={<Loader2 className={cn("size-4", phase === "processing" && "animate-spin")} />}
         label="Procesamiento (staging → agregación → swap)"
+        percent={processingIndeterminate ? null : processingValue}
         done={phase === "completed"}
         active={phase === "processing"}
-        percent={uploadingDone ? globalProcessing : 0}
         failed={phase === "failed"}
       />
 
@@ -88,12 +105,13 @@ function PhaseRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  percent: number;
+  /** null = indeterminado (fase en curso sin % conocible). */
+  percent: number | null;
   done: boolean;
   active: boolean;
   failed?: boolean;
 }) {
-  const shown = done ? 100 : percent;
+  const shown = percent === null ? null : done ? 100 : percent;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
@@ -101,10 +119,13 @@ function PhaseRow({
           {icon}
           {label}
         </span>
-        <span className="tabular-nums text-muted-foreground">{Math.round(shown)}%</span>
+        <span className="tabular-nums text-muted-foreground">
+          {shown === null ? "…" : `${Math.round(shown)}%`}
+        </span>
       </div>
       <Progress
-        value={shown}
+        value={shown ?? 0}
+        indeterminate={shown === null}
         aria-label={label}
         indicatorClassName={cn(
           failed && "bg-destructive",

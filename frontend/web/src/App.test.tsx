@@ -24,13 +24,14 @@ describe("App", () => {
     expect(screen.getByRole("tab", { name: /deudores/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /entidades/i })).toBeInTheDocument();
 
-    // Pestaña Archivo activa por defecto
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(/Cargar archivo de deudores/i);
+    // Los paneles quedan montados (el progreso de un upload sobrevive el cambio de pestaña),
+    // así que se identifica el activo por su nombre accesible.
+    expect(screen.getByRole("tabpanel", { name: /archivo/i })).toHaveTextContent(/Cargar archivo de deudores/i);
 
     await user.click(screen.getByRole("tab", { name: /deudores/i }));
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(/Grilla de deudores/i);
+    expect(screen.getByRole("tabpanel", { name: /deudores/i })).toHaveTextContent(/Grilla de deudores/i);
 
     await user.click(screen.getByRole("tab", { name: /entidades/i }));
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(/Grilla de entidades/i);
+    expect(screen.getByRole("tabpanel", { name: /entidades/i })).toHaveTextContent(/Grilla de entidades/i);
   });
 });

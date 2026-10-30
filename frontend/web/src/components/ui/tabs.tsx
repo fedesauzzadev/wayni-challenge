@@ -31,7 +31,13 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
     <TabsPrimitive.Content
-      className={cn("mt-6 focus-visible:outline-none", className)}
+      // forceMount: los paneles viven montados (ocultos vía hidden de Radix) para que el
+      // estado en curso —p. ej. el progreso de un upload— sobreviva el cambio de pestaña.
+      forceMount
+      className={cn(
+        "mt-6 focus-visible:outline-none data-[state=inactive]:hidden",
+        className,
+      )}
       {...props}
     />
   );
