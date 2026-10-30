@@ -18,9 +18,10 @@ El script ([`scripts/setup.mjs`](../scripts/setup.mjs)) crea `.env` desde `.env.
 
 ```
 [web React :5173] --/api--> [BFF Express :4000] --HTTP--> [ingestion :18080 / query :18081]
-                                |                                        ^
-                                +--> S3 (LocalStack, bucket bcra-local) ---+
-                                +--> Postgres (tabla notification_recipient, rol owner)
+                                 |                                        ^
+                                 +--> DATA_DIR (upload local directo) --->-+
+                                 +--> S3 (LocalStack, bucket bcra-local) -+
+                                 +--> Postgres (tabla notification_recipient, rol owner)
 ```
 
 - La web **nunca** habla directo con los microservicios ni con la DB: todo pasa por el BFF (proxy fino + lógica de upload). En dev, Vite proxya `/api` y `/health` al BFF (`vite.config.ts`).
@@ -29,14 +30,14 @@ El script ([`scripts/setup.mjs`](../scripts/setup.mjs)) crea `.env` desde `.env.
 
 ## Pestañas
 
-1. **Archivo** — última carga del archivo de deudores (estado, líneas, duración, job, source) vía `GET /imports/latest` del ingestion; upload con progreso en 2 fases (ver abajo); alta/baja de emails de notificación. El upload acepta además los archivos de referencia opcionales `Maeent.txt` (maestro de entidades) y `Nomdeu.txt` (nomenclador): el pipeline los busca junto al archivo de deudores, así que hay que incluirlos la primera vez (o cuando cambien) — después quedan en S3 por periodo.
+1. **Archivo** — última carga del archivo de deudores (estado, líneas, duración, job, source) vía `GET /imports/latest` del ingestion; upload con progreso en 2 fases (ver abajo) con selector de destino: entrega directa al dir compartido del ingestion (default) o subida a S3; alta/baja de emails de notificación. El upload acepta además los archivos de referencia opcionales `Maeent.txt` (maestro de entidades) y `Nomdeu.txt` (nomenclador): el pipeline los busca junto al archivo de deudores, así que hay que incluirlos la primera vez (o cuando cambien) — después quedan junto al source por periodo.
 2. **Deudores** — grilla paginada del backend (`GET /deudores` con `offset`/`limit`, total y navegación de páginas; respeta `Query:TopMax`).
 3. **Entidades** — grilla de entidades del import activo (código, nombre, `sumaTotalPrestamos`) con filtro por código vía `GET /entidades?codigo=`, más totales generales de `GET /totales`.
 
 ## Flujo del upload con progreso
 
-1. **Fase (a) — subida a S3**: la web hace `POST /api/imports/upload` (multipart) al BFF con `onUploadProgress` de axios; el BFF sube al bucket `bcra-local` de LocalStack las referencias opcionales (`uploads/<periodo>/Maeent.txt`, `uploads/<periodo>/Nomdeu.txt`, keys canónicos) y el archivo de deudores con key **por contenido**: `uploads/<periodo>/deudores-<sha256-16>.txt`.
-2. El BFF calcula el **sha256 del archivo** (etag) y llama a `POST /imports` del ingestion con `source=s3://…/deudores-<hash>.txt`, etag, size y periodo. La idempotencia (`source+etag+periodo`, índice único) es la del backend: re-subir el mismo archivo en el mismo periodo devuelve el job existente (`alreadyExisted`), sin re-procesar.
+1. **Fase (a) — entrega del archivo**: la web hace `POST /api/imports/upload` (multipart) al BFF con `onUploadProgress` de axios y un destino `storage`: `local` (default de la UI — el BFF copia al `DATA_DIR` del host, que el compose monta como `/data` en el ingestion, sin pasar por S3) o `s3` (sube al bucket `bcra-local` de LocalStack; si el campo no viene, el BFF defaulta a `s3`, retrocompatible). En ambos destinos las referencias opcionales van al mismo prefijo del periodo (`<periodo>/Maeent.txt`, `<periodo>/Nomdeu.txt`) y el archivo de deudores con nombre **por contenido**: `<periodo>/deudores-<sha256-16>.txt`.
+2. El BFF calcula el **sha256 del archivo** (etag) y llama a `POST /imports` del ingestion con `source=s3://…/deudores-<hash>.txt` (o `/data/…` en modo local), etag, size y periodo. La idempotencia (`source+etag+periodo`, índice único) es la del backend: re-subir el mismo archivo en el mismo periodo devuelve el job existente (`alreadyExisted`), sin re-procesar.
 3. **Fase (b) — procesamiento**: la web hace polling de `GET /api/imports/{id}` cada 2 s y muestra `loadingProgressPercent` (`bytesCommitted/size`) hasta el estado terminal (`Completed`/`Failed`).
 
 ## Emails de notificación
@@ -53,7 +54,7 @@ Tabla Postgres `notification_recipient` (migración `005_notification_recipients
 |---|---|---|
 | `GET /health` | — | Liveness del BFF |
 | `GET /api/imports/latest` | ingestion `GET /imports/latest` | 404 upstream → `{latest: null}` (empty state) |
-| `POST /api/imports/upload` | S3 + ingestion `POST /imports` | multipart `file` + `periodo` (yyyyMM, default mes corriente) + opcionales `maeent`/`nomdeu`; agrega `X-Api-Key` |
+| `POST /api/imports/upload` | `DATA_DIR` o S3 + ingestion `POST /imports` | multipart `file` + `periodo` (yyyyMM, default mes corriente) + opcionales `maeent`/`nomdeu` + `storage` (`local` \| `s3`, default `s3` si viene vacío; la UI manda `local` por defecto); agrega `X-Api-Key` |
 | `GET /api/imports/:id` | ingestion `GET /imports/{id}` | Polling de estado |
 | `GET /api/deudores?offset&limit&top&omitirSinNombre` | query `GET /deudores` | Envelope con `total` |
 | `GET /api/entidades?codigo=` | query `GET /entidades` | Filtro exacto/parcial por código |
@@ -72,13 +73,16 @@ Solo las del admin UI (el resto: ver `.env.example`).
 | `WEB_PORT` | `5173` | Puerto de Vite |
 | `INGESTION_API_URL` / `QUERY_API_URL` | `http://localhost:18080` / `:18081` | Base URLs upstream |
 | `UPLOAD_API_KEY` | — (requerida) | API key del `POST /imports` (la exige el ingestion) |
-| `S3_ENDPOINT`, `S3_BUCKET`, `AWS_*` | LocalStack / `bcra-local` | Subida de archivos |
+| `S3_ENDPOINT`, `S3_BUCKET`, `AWS_*` | LocalStack / `bcra-local` | Subida de archivos (modo `storage=s3`) |
 | `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | `localhost:5544` | Tabla `notification_recipient` |
+| `INGESTION_SOURCE_ROOT` | `/data` | `DATA_DIR` visto DENTRO del container del ingestion (source `/data/...` en modo local) |
+
+Las URLs, el endpoint de S3 y el host de Postgres son opcionales (defaults sensatos); `UPLOAD_API_KEY` y `POSTGRES_PASSWORD` sí son requeridas.
 
 ## Desarrollo y tests
 
 ```
-npm test              # frontend/bff (vitest + supertest, 24 tests)
+npm test              # frontend/bff (vitest + supertest, 30 tests)
 npm run build && npm test   # frontend/web (tsc + vite build; vitest, 21 tests)
 ```
 
