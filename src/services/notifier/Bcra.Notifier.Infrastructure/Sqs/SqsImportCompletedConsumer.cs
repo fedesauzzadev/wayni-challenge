@@ -35,7 +35,7 @@ public sealed partial class SqsImportCompletedConsumer(
                     },
                     stoppingToken);
 
-                foreach (var message in response.Messages)
+                foreach (var message in response.Messages ?? [])
                     await ProcessMessageAsync(queueUrl, message, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
