@@ -15,17 +15,31 @@ public static class Situacion
         Normal, AsistenciasCubiertasGarantiasA, RiesgoBajo, TratamientoEspecial, RiesgoMedio, RiesgoAlto, Irrecuperable
     ];
 
+    /// <summary>
+    /// Única fuente de verdad de severidad: códigos ordenados por rank 0..6. El CASE SQL de
+    /// agregación se genera desde esta tabla (paridad código↔rank garantizada).
+    /// </summary>
+    public static readonly (short Code, int Rank)[] SeverityTable =
+    [
+        (Normal, 0),
+        (RiesgoBajo, 1),
+        (TratamientoEspecial, 2),
+        (RiesgoMedio, 3),
+        (RiesgoAlto, 4),
+        (Irrecuperable, 5),
+        (AsistenciasCubiertasGarantiasA, 6)
+    ];
+
     public static bool IsValid(short value) => ValidValues.Contains(value);
 
-    public static int SeverityRank(short value) => value switch
+    public static int SeverityRank(short value)
     {
-        Normal => 0,
-        RiesgoBajo => 1,
-        TratamientoEspecial => 2,
-        RiesgoMedio => 3,
-        RiesgoAlto => 4,
-        Irrecuperable => 5,
-        AsistenciasCubiertasGarantiasA => 6,
-        _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown situacion code.")
-    };
+        foreach (var (code, rank) in SeverityTable)
+        {
+            if (code == value)
+                return rank;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown situacion code.");
+    }
 }

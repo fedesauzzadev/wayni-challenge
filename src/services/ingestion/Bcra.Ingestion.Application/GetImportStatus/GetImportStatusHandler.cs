@@ -1,3 +1,4 @@
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Shared.Domain.Errors;
 using Bcra.Shared.Domain.Results;
@@ -33,11 +34,11 @@ public sealed record ImportStatusResponse(
         job.FinishedAtUtc);
 }
 
-public sealed class GetImportStatusHandler(IImportJobRepository repository)
+public sealed class GetImportStatusHandler(IImportJobStore jobStore)
 {
     public async Task<Result<ImportStatusResponse>> HandleAsync(GetImportStatusQuery query, CancellationToken cancellationToken)
     {
-        var job = await repository.GetByIdAsync(query.JobId, cancellationToken);
+        var job = await jobStore.GetByIdAsync(query.JobId, cancellationToken);
         return job is null
             ? Result.Fail<ImportStatusResponse>(Error.NotFound("ImportJob.NotFound", $"Import job '{query.JobId}' was not found."))
             : Result.Ok(ImportStatusResponse.From(job));

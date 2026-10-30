@@ -1,3 +1,4 @@
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Shared.Domain.Errors;
 using Bcra.Shared.Domain.Results;
@@ -8,7 +9,7 @@ public sealed record RequestImportCommand(string Source, string? Etag, long Size
 
 public sealed record ImportRequestResponse(Guid Id, string Status, bool AlreadyExisted);
 
-public sealed class RequestImportHandler(IImportJobRepository repository, TimeProvider clock)
+public sealed class RequestImportHandler(IImportJobStore jobStore, TimeProvider clock)
 {
     /// <summary>Rango válido de Periodo (yyyyMM): 1900-01 a 2999-12.</summary>
     public const int MinPeriod = 190001;
@@ -27,7 +28,7 @@ public sealed class RequestImportHandler(IImportJobRepository repository, TimePr
         candidate.SetSourceMetadata(command.Size, command.Etag);
         candidate.SetPeriodo(command.Periodo);
 
-        var (job, alreadyExisted) = await repository.AddOrGetExistingAsync(candidate, cancellationToken);
+        var (job, alreadyExisted) = await jobStore.AddOrGetExistingAsync(candidate, cancellationToken);
         return Result.Ok(new ImportRequestResponse(job.Id, job.Status.ToString(), alreadyExisted));
     }
 }

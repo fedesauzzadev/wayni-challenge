@@ -7,8 +7,6 @@ namespace Bcra.Query.Infrastructure.Persistence;
 
 public sealed class DapperEntidadReadRepository(IDbConnectionFactory connectionFactory) : IEntidadReadRepository
 {
-    static DapperEntidadReadRepository() => DefaultTypeMap.MatchNamesWithUnderscores = true;
-
     public async Task<EntidadResumen?> GetEntidadAsync(Guid importId, int codigo, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);

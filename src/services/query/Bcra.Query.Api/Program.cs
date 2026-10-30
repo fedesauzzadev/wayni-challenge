@@ -1,4 +1,5 @@
 using Bcra.Query.Application;
+using Bcra.Query.Application.Contracts;
 using Bcra.Query.Application.GetDeudorByCuit;
 using Bcra.Query.Application.GetEntidad;
 using Bcra.Query.Application.GetTopDeudores;

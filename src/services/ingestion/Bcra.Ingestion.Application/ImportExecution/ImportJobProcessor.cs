@@ -3,7 +3,6 @@ using System.Diagnostics;
 using Bcra.Ingestion.Application.Options;
 using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
-using Bcra.Ingestion.Domain.Situations;
 using Bcra.Shared.Domain.Contracts;
 using Bcra.Shared.Infrastructure.Observability;
 using Microsoft.Extensions.Logging;
@@ -34,7 +33,9 @@ public sealed record ImportProcessingResult(ImportProcessingOutcome Outcome, Gui
 /// loguea pero no falla el import. Cada fase y el resultado se miden con <c>ImportPipelineMeter</c>.
 /// </summary>
 public sealed partial class ImportJobProcessor(
-    IImportJobRepository repository,
+    IImportJobStore jobStore,
+    IImportStorageManager storageManager,
+    IReferenceTableStorage referenceStorage,
     IFileSourceFactory fileSourceFactory,
     StagingCopyLoader stagingLoader,
     ISituacionAggregationStrategy situacionStrategy,
@@ -49,7 +50,7 @@ public sealed partial class ImportJobProcessor(
         var now = clock.GetUtcNow();
         var leaseTimeout = TimeSpan.FromSeconds(options.Value.LeaseTimeoutSeconds);
 
-        var job = await repository.ClaimNextAsync(workerId, now, now - leaseTimeout, cancellationToken);
+        var job = await jobStore.ClaimNextAsync(workerId, now, now - leaseTimeout, cancellationToken);
         if (job is null)
             return ImportProcessingResult.Nothing;
 
@@ -57,7 +58,7 @@ public sealed partial class ImportJobProcessor(
         {
             var totalStart = Stopwatch.GetTimestamp();
 
-            await repository.CreateImportStorageAsync(job.Id, cancellationToken);
+            await storageManager.CreateImportStorageAsync(job.Id, cancellationToken);
 
             if (job.Status == ImportJobStatus.Loading)
             {
@@ -70,27 +71,27 @@ public sealed partial class ImportJobProcessor(
                 }, cancellationToken);
 
                 job.MarkAggregating();
-                await repository.SaveAsync(job, cancellationToken);
+                await jobStore.SaveAsync(job, cancellationToken);
             }
 
-            await repository.RenewLeaseAsync(job.Id, workerId, clock.GetUtcNow(), cancellationToken);
+            await jobStore.RenewLeaseAsync(job.Id, workerId, clock.GetUtcNow(), cancellationToken);
 
             await MeasurePhaseAsync(ImportPipelineMeter.PhaseAggregation,
-                ct => repository.AggregateImportAsync(job.Id, situacionStrategy.BuildAggregationExpression(), ct), cancellationToken);
+                ct => storageManager.AggregateImportAsync(job.Id, situacionStrategy.BuildAggregationExpression(), ct), cancellationToken);
 
             await MeasurePhaseAsync(ImportPipelineMeter.PhaseIndexes,
-                ct => repository.CreateImportIndexesAsync(job.Id, ct), cancellationToken);
+                ct => storageManager.CreateImportIndexesAsync(job.Id, ct), cancellationToken);
 
             var previousImportId = await MeasurePhaseAsync(ImportPipelineMeter.PhaseSwap,
-                ct => repository.SwapActiveImportAsync(job.Id, ct), cancellationToken);
+                ct => storageManager.SwapActiveImportAsync(job.Id, ct), cancellationToken);
 
             job.MarkCompleted(clock.GetUtcNow());
-            await repository.SaveAsync(job, cancellationToken);
+            await jobStore.SaveAsync(job, cancellationToken);
 
             await PublishCompletedEventAsync(job, cancellationToken);
 
             if (previousImportId is { } previous && previous != job.Id)
-                await repository.DropImportStorageAsync(previous, cancellationToken);
+                await storageManager.DropImportStorageAsync(previous, cancellationToken);
 
             pipelineMeter.RecordPhaseDuration(ImportPipelineMeter.PhaseTotal, Stopwatch.GetElapsedTime(totalStart));
             pipelineMeter.AddJobOutcome("completed");
@@ -100,7 +101,7 @@ public sealed partial class ImportJobProcessor(
         catch (SourceChangedException ex)
         {
             job.MarkFailed(clock.GetUtcNow());
-            await repository.SaveAsync(job, cancellationToken);
+            await jobStore.SaveAsync(job, cancellationToken);
             pipelineMeter.AddJobOutcome("failed");
             LogSourceChanged(job.Id, ex);
             return new ImportProcessingResult(ImportProcessingOutcome.Failed, job.Id);
@@ -133,7 +134,7 @@ public sealed partial class ImportJobProcessor(
     {
         try
         {
-            var stats = await repository.GetImportStatsAsync(job.Id, cancellationToken);
+            var stats = await jobStore.GetImportStatsAsync(job.Id, cancellationToken);
             var durationMs = job.StartedAtUtc is { } started && job.FinishedAtUtc is { } finished
                 ? (finished - started).TotalMilliseconds
                 : 0d;
@@ -176,7 +177,10 @@ public sealed partial class ImportJobProcessor(
         var nombresOpened = await nombresSource.OpenAsync(0, cancellationToken);
         await using var nombresStream = nombresOpened.Stream;
 
-        await repository.LoadReferenceTablesAsync(entidadesStream, nombresStream, cancellationToken);
+        await referenceStorage.LoadReferenceTablesAsync(
+            ReferenceFileParser.ParseEntidadesAsync(entidadesStream, cancellationToken),
+            ReferenceFileParser.ParseDeudoresNombresAsync(nombresStream, cancellationToken),
+            cancellationToken);
     }
 
     private static string ResolveReferencePath(string source, string? overridePath, string defaultFileName)

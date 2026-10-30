@@ -1,4 +1,4 @@
-namespace Bcra.Ingestion.Domain.Situations;
+namespace Bcra.Ingestion.Application.Ports;
 
 public interface ISituacionAggregationStrategy
 {

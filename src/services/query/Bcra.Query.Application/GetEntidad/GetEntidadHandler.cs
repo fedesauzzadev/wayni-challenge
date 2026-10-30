@@ -19,13 +19,13 @@ public sealed class GetEntidadHandler(IActiveImportResolver activeImportResolver
                 Error.Validation("Entidad.InvalidCodigo", $"'{query.Codigo}' is not a valid entity code; it must be 1 or greater."));
         }
 
-        var importId = await activeImportResolver.ResolveActiveImportIdAsync(cancellationToken);
-        if (importId is null)
+        var activeImport = await activeImportResolver.ResolveActiveImportOrFailAsync(cancellationToken);
+        if (activeImport.IsFailure)
         {
-            return Result.Fail<EntidadResumenResponse>(QueryErrors.NoActiveImport);
+            return Result.Fail<EntidadResumenResponse>(activeImport.Error);
         }
 
-        var entidad = await repository.GetEntidadAsync(importId.Value, query.Codigo, cancellationToken);
+        var entidad = await repository.GetEntidadAsync(activeImport.Value, query.Codigo, cancellationToken);
         return entidad is null
             ? Result.Fail<EntidadResumenResponse>(
                 Error.NotFound("Entidad.NotFound", $"Entity '{query.Codigo}' was not found in the active import."))

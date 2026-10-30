@@ -27,6 +27,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        DapperDefaults.Configure();
         await _container.StartAsync();
         new DbUpMigrator(
                 Options.Create(new DatabaseOptions { ConnectionString = ConnectionString }),

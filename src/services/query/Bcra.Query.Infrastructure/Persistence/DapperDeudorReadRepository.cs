@@ -15,8 +15,6 @@ public sealed class DapperDeudorReadRepository(IDbConnectionFactory connectionFa
         n.nombre
         """;
 
-    static DapperDeudorReadRepository() => DefaultTypeMap.MatchNamesWithUnderscores = true;
-
     public async Task<DeudorResumen?> GetDeudorAsync(Guid importId, CuitValue cuit, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);

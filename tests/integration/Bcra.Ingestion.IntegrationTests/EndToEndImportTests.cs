@@ -192,11 +192,13 @@ internal static class ImportTestHarness
         IngestionOptions options,
         IStagingBatchCommitter? batchCommitter = null,
         IImportEventPublisher? eventPublisher = null,
-        Domain.Situations.ISituacionAggregationStrategy? situacionStrategy = null)
+        ISituacionAggregationStrategy? situacionStrategy = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
         return new ImportJobProcessor(
+            repository,
+            repository,
             repository,
             new LocalFileSourceFactory(optionsSnapshot),
             new StagingCopyLoader(batchCommitter ?? repository, TimeProvider.System, optionsSnapshot, new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter()),
@@ -216,12 +218,17 @@ internal static class ImportTestHarness
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter());
         services.AddSingleton<IOptions<IngestionOptions>>(optionsSnapshot);
-        services.AddSingleton<Domain.Situations.ISituacionAggregationStrategy>(_ => new MaxLiteralSituacionStrategy());
-        services.AddSingleton<Bcra.Ingestion.Application.Ports.IFileSourceFactory>(_ => new LocalFileSourceFactory(optionsSnapshot));
+        services.AddSingleton<ISituacionAggregationStrategy>(_ => new MaxLiteralSituacionStrategy());
+        services.AddSingleton<IFileSourceFactory>(_ => new LocalFileSourceFactory(optionsSnapshot));
         services.AddSingleton<IImportEventPublisher>(eventPublisher ?? new RecordingImportEventPublisher());
-        services.AddScoped<IImportJobRepository>(_ => fixture.CreateRepository());
-        services.AddScoped<Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter>(sp =>
-            (Bcra.Ingestion.Application.ImportExecution.IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
+        services.AddScoped<DapperImportJobRepository>(_ => fixture.CreateRepository());
+        services.AddScoped<IImportJobStore>(sp => sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IImportStorageManager>(sp =>
+            (IImportStorageManager)sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IReferenceTableStorage>(sp =>
+            (IReferenceTableStorage)sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IStagingBatchCommitter>(sp =>
+            (IStagingBatchCommitter)sp.GetRequiredService<DapperImportJobRepository>());
         services.AddScoped<StagingCopyLoader>();
         services.AddScoped<ImportJobProcessor>();
         var provider = services.BuildServiceProvider();

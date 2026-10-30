@@ -1,7 +1,7 @@
 using System.Data;
 using System.Data.Common;
-using System.Text;
 using Bcra.Ingestion.Application.ImportExecution;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
 using Bcra.Ingestion.Domain.Parsing;
 using Bcra.Shared.Infrastructure.Persistence;
@@ -11,7 +11,7 @@ using Npgsql;
 namespace Bcra.Ingestion.Infrastructure.Persistence;
 
 public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFactory)
-    : IImportJobRepository, IStagingBatchCommitter
+    : IImportJobStore, IImportStorageManager, IReferenceTableStorage, IStagingBatchCommitter
 {
     private const string UniqueViolationSqlState = "23505";
     private const string SelectColumns = """
@@ -27,8 +27,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
 
     /// <summary>Lote de upsert de archivos de referencia (Maeent.txt/Nomdeu.txt).</summary>
     private const int ReferenceUpsertBatchSize = 5000;
-
-    static DapperImportJobRepository() => DefaultTypeMap.MatchNamesWithUnderscores = true;
 
     public async Task<(ImportJob Job, bool AlreadyExisted)> AddOrGetExistingAsync(ImportJob job, CancellationToken cancellationToken)
     {
@@ -193,7 +191,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         try
         {
             if (records.Count > 0)
-                await NpgsqlStagingWriter.WriteBatchAsync((NpgsqlConnection)connection, importId, records, cancellationToken);
+                await NpgsqlStagingWriter.WriteBatchAsync(connection, importId, records, cancellationToken);
 
             var command = new CommandDefinition(
                 """
@@ -241,7 +239,10 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         }
     }
 
-    public async Task LoadReferenceTablesAsync(Stream entidades, Stream nombres, CancellationToken cancellationToken)
+    public async Task LoadReferenceTablesAsync(
+        IAsyncEnumerable<EntidadReference> entidades,
+        IAsyncEnumerable<DeudorNombreReference> nombres,
+        CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         await LoadEntidadesAsync(connection, entidades, cancellationToken);
@@ -379,22 +380,15 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
 
     private static string PartitionName(string prefix, Guid importId) => $"{prefix}_{Hex(importId)}";
 
-    private static async Task LoadEntidadesAsync(DbConnection connection, Stream stream, CancellationToken cancellationToken)
+    private static async Task LoadEntidadesAsync(DbConnection connection, IAsyncEnumerable<EntidadReference> entidades, CancellationToken cancellationToken)
     {
-        var reader = new OffsetLineReader(stream);
         var codigos = new List<short>();
         var nombres = new List<string>();
 
-        while (await reader.ReadNextAsync(cancellationToken) is { } line)
+        await foreach (var (codigo, nombre) in entidades.WithCancellation(cancellationToken))
         {
-            var span = line.Line.Span;
-            if (span.Length < 6)
-                continue;
-            if (!FixedWidthDigits.TryParse(span[..5], maxLength: 5, short.MaxValue, out var codigo))
-                continue;
-
-            codigos.Add((short)codigo);
-            nombres.Add(Encoding.Latin1.GetString(span[5..]).Trim());
+            codigos.Add(codigo);
+            nombres.Add(nombre);
 
             if (codigos.Count >= ReferenceUpsertBatchSize)
             {
@@ -422,24 +416,15 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         return connection.ExecuteAsync(command);
     }
 
-    private static async Task LoadDeudoresNombresAsync(DbConnection connection, Stream stream, CancellationToken cancellationToken)
+    private static async Task LoadDeudoresNombresAsync(DbConnection connection, IAsyncEnumerable<DeudorNombreReference> nombresDeudores, CancellationToken cancellationToken)
     {
-        var reader = new OffsetLineReader(stream);
         var cuits = new List<string>();
         var nombres = new List<string>();
 
-        while (await reader.ReadNextAsync(cancellationToken) is { } line)
+        await foreach (var (cuit, nombre) in nombresDeudores.WithCancellation(cancellationToken))
         {
-            var span = line.Line.Span;
-            if (span.Length < 12)
-                continue;
-
-            var cuit = Encoding.Latin1.GetString(span[..11]).Trim();
-            if (cuit.Length == 0 || cuit.Length > 11)
-                continue;
-
             cuits.Add(cuit);
-            nombres.Add(Encoding.Latin1.GetString(span[11..]).Trim());
+            nombres.Add(nombre);
 
             if (cuits.Count >= ReferenceUpsertBatchSize)
             {

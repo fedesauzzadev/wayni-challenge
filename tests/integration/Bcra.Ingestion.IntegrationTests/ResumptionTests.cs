@@ -1,7 +1,7 @@
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Ingestion.Domain.ImportJobs;
-using Bcra.Ingestion.Domain.Situations;
 using Bcra.Ingestion.Infrastructure.Persistence;
 using Bcra.Ingestion.Infrastructure.Situations;
 using Dapper;

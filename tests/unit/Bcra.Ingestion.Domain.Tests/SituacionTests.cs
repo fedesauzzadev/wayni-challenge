@@ -44,4 +44,24 @@ public class SituacionTests
 
         ranks.Should().BeInAscendingOrder();
     }
+
+    [Fact]
+    public void SeverityTable_IsTheSingleSourceOfTruthForSeverityRank()
+    {
+        foreach (var (code, rank) in Situacion.SeverityTable)
+            Situacion.SeverityRank(code).Should().Be(rank, $"el rank de {code} debe salir de la tabla");
+
+        Situacion.SeverityTable.Select(e => e.Rank).Should().BeInAscendingOrder();
+        Situacion.SeverityTable.Select(e => e.Rank).Should().BeEquivalentTo(
+            Enumerable.Range(0, Situacion.SeverityTable.Length), "los ranks son contiguos desde 0");
+        Situacion.SeverityTable.Select(e => e.Code).Should().BeEquivalentTo(Situacion.ValidValues);
+    }
+
+    [Fact]
+    public void SeverityRank_UnknownCode_Throws()
+    {
+        var act = () => Situacion.SeverityRank(99);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }

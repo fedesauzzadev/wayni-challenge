@@ -79,7 +79,7 @@ public sealed class ImportCompletedMessageHandlerTests
     }
 
     [Fact]
-    public async Task NotifierReturnsFailedResult_ReturnsRequeue()
+    public async Task NotifierReturnsFailedResult_ReturnsAbandon()
     {
         var notifier = Substitute.For<INotifier>();
         notifier.Strategy.Returns("webhook");
@@ -90,11 +90,11 @@ public sealed class ImportCompletedMessageHandlerTests
 
         var outcome = await sut.HandleAsync(JsonSerializer.Serialize(CreateEvent(), WebOptions), CancellationToken.None);
 
-        outcome.Should().Be(MessageProcessingOutcome.Requeue);
+        outcome.Should().Be(MessageProcessingOutcome.Abandon);
     }
 
     [Fact]
-    public async Task NotifierReturnsUndeliveredReceipt_ReturnsRequeue()
+    public async Task NotifierReturnsUndeliveredReceipt_ReturnsAbandon()
     {
         var notifier = Substitute.For<INotifier>();
         notifier.Strategy.Returns("webhook");
@@ -105,7 +105,7 @@ public sealed class ImportCompletedMessageHandlerTests
 
         var outcome = await sut.HandleAsync(JsonSerializer.Serialize(CreateEvent(), WebOptions), CancellationToken.None);
 
-        outcome.Should().Be(MessageProcessingOutcome.Requeue);
+        outcome.Should().Be(MessageProcessingOutcome.Abandon);
     }
 
     [Theory]

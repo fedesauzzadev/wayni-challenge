@@ -12,13 +12,13 @@ public sealed class GetTotalesHandler(IActiveImportResolver activeImportResolver
 {
     public async Task<Result<DeudorTotalesResponse>> HandleAsync(GetTotalesQuery query, CancellationToken cancellationToken)
     {
-        var importId = await activeImportResolver.ResolveActiveImportIdAsync(cancellationToken);
-        if (importId is null)
+        var activeImport = await activeImportResolver.ResolveActiveImportOrFailAsync(cancellationToken);
+        if (activeImport.IsFailure)
         {
-            return Result.Fail<DeudorTotalesResponse>(QueryErrors.NoActiveImport);
+            return Result.Fail<DeudorTotalesResponse>(activeImport.Error);
         }
 
-        var totales = await repository.GetTotalesAsync(importId.Value, cancellationToken);
+        var totales = await repository.GetTotalesAsync(activeImport.Value, cancellationToken);
         return Result.Ok(ToResponse(totales));
     }
 

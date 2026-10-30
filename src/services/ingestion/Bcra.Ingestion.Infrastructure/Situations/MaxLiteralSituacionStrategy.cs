@@ -1,4 +1,4 @@
-using Bcra.Ingestion.Domain.Situations;
+using Bcra.Ingestion.Application.Ports;
 
 namespace Bcra.Ingestion.Infrastructure.Situations;
 

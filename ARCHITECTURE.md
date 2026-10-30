@@ -38,6 +38,7 @@ Pipeline ELT de deudores bancarios con 3 microservicios (.NET 10, minimal APIs) 
 - [ADR-007 — READ COMMITTED en todas las escrituras](docs/adr/ADR-007-read-committed.md)
 - [ADR-008 — Sin lock distribuido](docs/adr/ADR-008-sin-lock-distribuido.md)
 - [ADR-009 — Observabilidad con OpenTelemetry](docs/adr/ADR-009-observabilidad-opentelemetry.md)
+- [ADR-010 — Notifier at-least-once sin idempotency key](docs/adr/ADR-010-notifier-at-least-once-webhook.md)
 
 ## Tests
 

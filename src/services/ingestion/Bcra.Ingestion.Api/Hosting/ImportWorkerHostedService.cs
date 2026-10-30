@@ -1,6 +1,6 @@
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
-using Bcra.Ingestion.Domain.ImportJobs;
+using Bcra.Ingestion.Application.Ports;
 using Bcra.Shared.Infrastructure.Observability;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -84,7 +84,7 @@ public sealed partial class ImportWorkerHostedService(
         try
         {
             meter.UpdateJobsByStatus(
-                await scopeServices.GetRequiredService<IImportJobRepository>().CountByStatusAsync(cancellationToken));
+                await scopeServices.GetRequiredService<IImportJobStore>().CountByStatusAsync(cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

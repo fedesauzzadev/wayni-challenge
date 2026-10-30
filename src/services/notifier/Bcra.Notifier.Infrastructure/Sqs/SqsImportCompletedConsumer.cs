@@ -56,9 +56,9 @@ public sealed partial class SqsImportCompletedConsumer(
     private async Task ProcessMessageAsync(string queueUrl, Message message, CancellationToken cancellationToken)
     {
         var outcome = await messageHandler.HandleAsync(message.Body, cancellationToken);
-        if (outcome == MessageProcessingOutcome.Requeue)
+        if (outcome == MessageProcessingOutcome.Abandon)
         {
-            LogMessageRequeued(message.MessageId);
+            LogMessageAbandoned(message.MessageId);
             return;
         }
 
@@ -92,7 +92,7 @@ public sealed partial class SqsImportCompletedConsumer(
     private partial void LogPollFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Message {MessageId} was not deleted and will return via visibility timeout")]
-    private partial void LogMessageRequeued(string messageId);
+    private partial void LogMessageAbandoned(string messageId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete message {MessageId} from SQS; it may be notified again")]
     private partial void LogDeleteFailed(string messageId, Exception exception);

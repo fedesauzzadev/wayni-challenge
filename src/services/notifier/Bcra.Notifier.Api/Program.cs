@@ -1,6 +1,5 @@
 using Bcra.Notifier.Application;
 using Bcra.Notifier.Infrastructure;
-using Bcra.Notifier.Infrastructure.Sqs;
 using Bcra.Shared.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,8 +9,6 @@ builder.AddDefaultApi("notifier-service", useRateLimiter: false);
 builder.Services
     .AddNotifierApplication()
     .AddNotifierInfrastructure(builder.Configuration);
-
-builder.Services.AddHostedService<SqsImportCompletedConsumer>();
 
 var app = builder.Build();
 

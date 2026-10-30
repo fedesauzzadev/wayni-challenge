@@ -14,6 +14,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddQueryInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        DapperDefaults.Configure();
+
         services.AddValidatedOptions<DatabaseOptions>(configuration, DatabaseOptions.SectionName);
 
         services.AddSingleton<IDbConnectionFactory>(sp =>

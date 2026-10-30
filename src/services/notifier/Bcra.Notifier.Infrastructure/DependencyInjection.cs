@@ -34,6 +34,7 @@ public static class DependencyInjection
         }
 
         services.AddHealthChecks().AddCheck<SqsHealthCheck>("sqs");
+        services.AddHostedService<SqsImportCompletedConsumer>();
 
         return services;
     }

@@ -8,7 +8,7 @@ namespace Bcra.Notifier.Application.Notifications;
 public enum MessageProcessingOutcome
 {
     Delete,
-    Requeue
+    Abandon
 }
 
 public sealed partial class ImportCompletedMessageHandler(
@@ -40,13 +40,13 @@ public sealed partial class ImportCompletedMessageHandler(
             if (result.IsFailure)
             {
                 LogNotificationFailed(importCompleted.JobId, notifier.Strategy, result.Error.ToString());
-                return MessageProcessingOutcome.Requeue;
+                return MessageProcessingOutcome.Abandon;
             }
 
             if (result.Value is { Delivered: false })
             {
                 LogNotificationFailed(importCompleted.JobId, notifier.Strategy, result.Value.FailureReason ?? "not delivered");
-                return MessageProcessingOutcome.Requeue;
+                return MessageProcessingOutcome.Abandon;
             }
         }
 

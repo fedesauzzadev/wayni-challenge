@@ -1,11 +1,8 @@
 using Amazon.S3;
 using Amazon.SQS;
-using Bcra.Ingestion.Application.GetImportStatus;
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
 using Bcra.Ingestion.Application.Ports;
-using Bcra.Ingestion.Domain.ImportJobs;
-using Bcra.Ingestion.Domain.Situations;
 using Bcra.Ingestion.Infrastructure.FileSources;
 using Bcra.Ingestion.Infrastructure.HealthChecks;
 using Bcra.Ingestion.Infrastructure.Persistence;
@@ -27,6 +24,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddIngestionInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        DapperDefaults.Configure();
+
         services.AddValidatedOptions<DatabaseOptions>(configuration, DatabaseOptions.SectionName);
         services.AddValidatedOptions<AwsOptions>(configuration, AwsOptions.SectionName);
         services.AddValidatedOptions<SqsOptions>(configuration, SqsOptions.SectionName);
@@ -41,9 +40,11 @@ public static class DependencyInjection
         services.AddSingleton<IAmazonSQS>(sp => AwsClientFactory.CreateSqsClient(sp.GetRequiredService<IOptions<AwsOptions>>().Value));
 
         services.AddSingleton<DbUpMigrator>();
-        services.AddScoped<IImportJobRepository, DapperImportJobRepository>();
-        services.AddScoped<IStagingBatchCommitter>(sp =>
-            (IStagingBatchCommitter)sp.GetRequiredService<IImportJobRepository>());
+        services.AddScoped<DapperImportJobRepository>();
+        services.AddScoped<IImportJobStore>(sp => sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IImportStorageManager>(sp => (IImportStorageManager)sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IReferenceTableStorage>(sp => (IReferenceTableStorage)sp.GetRequiredService<DapperImportJobRepository>());
+        services.AddScoped<IStagingBatchCommitter>(sp => (IStagingBatchCommitter)sp.GetRequiredService<DapperImportJobRepository>());
         services.AddSingleton<LocalFileSourceFactory>();
         services.AddSingleton<IFileSourceFactory, RoutingFileSourceFactory>();
         services.AddScoped<IImportEventPublisher, SqsImportEventPublisher>();
@@ -61,7 +62,6 @@ public static class DependencyInjection
         });
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
-        services.AddScoped<GetImportStatusHandler>();
 
         return services;
     }

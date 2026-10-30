@@ -26,6 +26,8 @@ public static class DefaultApiExtensions
     /// Bootstrap comun de los servicios: Serilog con <see cref="LoggingExtensions.ConfigureDefaults"/>,
     /// infra compartida, observabilidad, ProblemDetails, OpenAPI 3.1 (con document transformer de
     /// <c>/health/*</c>) y rate limiter fixed-window por IP (opt-out via <paramref name="useRateLimiter"/>).
+    /// Los health checks NO se registran acá: cada servicio los registra (único origen por servicio)
+    /// en el <c>AddHealthChecks()</c> del DI de su capa Infrastructure.
     /// </summary>
     public static WebApplicationBuilder AddDefaultApi(this WebApplicationBuilder builder, string serviceName, bool useRateLimiter = true)
     {

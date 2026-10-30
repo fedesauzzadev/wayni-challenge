@@ -1,3 +1,4 @@
+using Bcra.Query.Application.Contracts;
 using Bcra.Query.Domain.Ports;
 using Bcra.Shared.Domain.Errors;
 using Bcra.Shared.Domain.Results;
@@ -6,8 +7,6 @@ using Bcra.Shared.Domain.ValueObjects;
 namespace Bcra.Query.Application.GetDeudorByCuit;
 
 public sealed record GetDeudorByCuitQuery(string Cuit);
-
-public sealed record DeudorResumenResponse(string Cuit, int SituacionMaxima, decimal SumaTotalPrestamos, string? Nombre);
 
 public sealed class GetDeudorByCuitHandler(IActiveImportResolver activeImportResolver, IDeudorReadRepository repository)
 {
@@ -20,19 +19,16 @@ public sealed class GetDeudorByCuitHandler(IActiveImportResolver activeImportRes
                 Error.Validation("Deudor.InvalidCuit", $"'{query.Cuit}' is not a valid CUIT."));
         }
 
-        var importId = await activeImportResolver.ResolveActiveImportIdAsync(cancellationToken);
-        if (importId is null)
+        var activeImport = await activeImportResolver.ResolveActiveImportOrFailAsync(cancellationToken);
+        if (activeImport.IsFailure)
         {
-            return Result.Fail<DeudorResumenResponse>(QueryErrors.NoActiveImport);
+            return Result.Fail<DeudorResumenResponse>(activeImport.Error);
         }
 
-        var deudor = await repository.GetDeudorAsync(importId.Value, Cuit.FromTrusted(digits), cancellationToken);
+        var deudor = await repository.GetDeudorAsync(activeImport.Value, Cuit.FromTrusted(digits), cancellationToken);
         return deudor is null
             ? Result.Fail<DeudorResumenResponse>(
                 Error.NotFound("Deudor.NotFound", $"Deudor '{digits}' was not found in the active import."))
-            : Result.Ok(ToResponse(deudor));
+            : Result.Ok(deudor.ToResponse());
     }
-
-    internal static DeudorResumenResponse ToResponse(Domain.ReadModels.DeudorResumen deudor) =>
-        new(deudor.Cuit.Value, deudor.SituacionMaxima, deudor.SumaTotalPrestamos, deudor.Nombre);
 }
