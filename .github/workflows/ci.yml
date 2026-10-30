@@ -32,5 +32,11 @@ jobs:
       - name: Unit tests (Notifier.Application)
         run: dotnet test tests/unit/Bcra.Notifier.Application.Tests --no-build --nologo
 
+      - name: Unit tests (Ingestion.Application)
+        run: dotnet test tests/unit/Bcra.Ingestion.Application.Tests --no-build --nologo
+
       - name: Integration tests (Testcontainers, requiere Docker)
         run: dotnet test tests/integration/Bcra.Ingestion.IntegrationTests --no-build --nologo
+
+      - name: Integration tests Query (Testcontainers, requiere Docker)
+        run: dotnet test tests/integration/Bcra.Query.IntegrationTests --no-build --nologo
