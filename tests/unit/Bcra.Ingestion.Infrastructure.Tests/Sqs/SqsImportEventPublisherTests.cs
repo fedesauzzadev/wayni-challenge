@@ -18,9 +18,6 @@ public sealed class SqsImportEventPublisherTests
         202311,
         10,
         1,
-        4,
-        2,
-        99.9m,
         12.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 
@@ -52,8 +49,7 @@ public sealed class SqsImportEventPublisherTests
                 request.QueueUrl == "http://localstack:4566/000000000000/import-completed"
                 && request.MessageBody.Contains($"\"jobId\":\"{importCompleted.JobId}\"")
                 && request.MessageBody.Contains("\"linesProcessed\":10")
-                && request.MessageBody.Contains("\"totalDeudores\":4")
-                && request.MessageBody.Contains("\"sumaTotalPrestamos\":99.9")),
+                && request.MessageBody.Contains("\"durationMs\":12.5")),
             Arg.Any<CancellationToken>());
     }
 }

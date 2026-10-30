@@ -357,23 +357,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         await connection.ExecuteAsync(command);
     }
 
-    public async Task<ImportStats> GetImportStatsAsync(Guid importId, CancellationToken cancellationToken)
-    {
-        using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        var command = new CommandDefinition(
-            """
-            SELECT
-                (SELECT count(*) FROM deudor_agg WHERE import_id = @ImportId) AS total_deudores,
-                (SELECT count(*) FROM entidad_agg WHERE import_id = @ImportId) AS total_entidades,
-                (SELECT COALESCE(sum(suma_total), 0) FROM deudor_agg WHERE import_id = @ImportId) AS suma_total
-            """,
-            new { ImportId = importId },
-            cancellationToken: cancellationToken);
-
-        var row = await connection.QuerySingleAsync<ImportStatsRow>(command);
-        return new ImportStats(row.TotalDeudores, row.TotalEntidades, row.SumaTotal);
-    }
-
     public async Task<IReadOnlyDictionary<string, int>> CountByStatusAsync(CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
@@ -459,13 +442,6 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             new { Cuits = cuits.ToArray(), Nombres = nombres.ToArray() },
             cancellationToken: cancellationToken);
         return connection.ExecuteAsync(command);
-    }
-
-    private sealed class ImportStatsRow
-    {
-        public long TotalDeudores { get; set; }
-        public long TotalEntidades { get; set; }
-        public decimal SumaTotal { get; set; }
     }
 
     private sealed class ImportJobRow

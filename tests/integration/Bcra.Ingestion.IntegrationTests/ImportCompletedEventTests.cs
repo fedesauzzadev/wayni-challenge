@@ -9,7 +9,7 @@ namespace Bcra.Ingestion.IntegrationTests;
 public sealed class ImportCompletedEventTests(PostgresFixture fixture)
 {
     [Fact]
-    public async Task CompletedImport_PublishesImportCompletedEvent_WithAggregates()
+    public async Task CompletedImport_PublishesImportCompletedEvent_WithJobData()
     {
         await fixture.ResetAsync();
         var directory = Path.Combine(Path.GetTempPath(), "bcra-events", Guid.NewGuid().ToString("N"));
@@ -41,9 +41,6 @@ public sealed class ImportCompletedEventTests(PostgresFixture fixture)
         importCompleted.Periodo.Should().Be(202311);
         importCompleted.LinesProcessed.Should().Be(sample.ValidLines);
         importCompleted.LinesRejected.Should().Be(sample.RejectedLines);
-        importCompleted.TotalDeudores.Should().Be(sample.PorCuit.Count);
-        importCompleted.TotalEntidades.Should().Be(sample.PorEntidad.Count);
-        importCompleted.SumaTotalPrestamos.Should().Be(sample.PorCuit.Values.Sum(porCuit => porCuit.Suma));
         importCompleted.DurationMs.Should().BeGreaterThanOrEqualTo(0);
         importCompleted.CompletedAtUtc.Should().BeOnOrAfter(DateTime.UtcNow.AddMinutes(-5));
     }

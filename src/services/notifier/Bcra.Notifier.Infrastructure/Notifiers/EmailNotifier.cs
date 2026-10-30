@@ -74,9 +74,6 @@ public sealed partial class EmailNotifier(
         Periodo: {importCompleted.Periodo}
         Lineas procesadas: {importCompleted.LinesProcessed}
         Lineas rechazadas: {importCompleted.LinesRejected}
-        Total deudores: {importCompleted.TotalDeudores}
-        Total entidades: {importCompleted.TotalEntidades}
-        Suma total prestamos: {importCompleted.SumaTotalPrestamos.ToString(CultureInfo.InvariantCulture)}
         Duracion: {importCompleted.DurationMs.ToString(CultureInfo.InvariantCulture)} ms
         Completado (UTC): {importCompleted.CompletedAtUtc:O}
         """;

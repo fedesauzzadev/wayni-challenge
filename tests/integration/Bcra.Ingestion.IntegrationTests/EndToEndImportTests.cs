@@ -193,13 +193,12 @@ internal static class ImportTestHarness
         IStagingBatchCommitter? batchCommitter = null,
         IImportEventPublisher? eventPublisher = null,
         ISituacionAggregationStrategy? situacionStrategy = null,
-        ILogger<ImportJobProcessor>? logger = null,
-        IImportJobStore? jobStore = null)
+        ILogger<ImportJobProcessor>? logger = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
         return new ImportJobProcessor(
-            jobStore ?? repository,
+            repository,
             repository,
             repository,
             new LocalFileSourceFactory(optionsSnapshot),

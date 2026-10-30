@@ -153,12 +153,15 @@ public sealed partial class ImportJobProcessor(
     {
         try
         {
-            var stats = await GetStatsWithFallbackAsync(job.Id, cancellationToken);
             var durationMs = job.StartedAtUtc is { } started && job.FinishedAtUtc is { } finished
                 ? (finished - started).TotalMilliseconds
                 : 0d;
             var completedAt = job.FinishedAtUtc ?? clock.GetUtcNow();
 
+            // Sin queries a la DB acá: los totales agregados exigirían un count/sum sobre
+            // millones de filas recién escritas (I/O saturado justo tras el import) y
+            // demoraban o perdían la notificación; el evento viaja solo con lo que ya
+            // tiene el job en memoria.
             await eventPublisher.PublishAsync(
                 new ImportCompletedEvent(
                     job.Id,
@@ -166,9 +169,6 @@ public sealed partial class ImportJobProcessor(
                     job.Periodo,
                     job.LinesProcessed,
                     job.LinesRejected,
-                    stats.TotalDeudores,
-                    stats.TotalEntidades,
-                    stats.SumaTotalPrestamos,
                     durationMs,
                     completedAt.UtcDateTime),
                 cancellationToken);
@@ -178,40 +178,6 @@ public sealed partial class ImportJobProcessor(
             LogEventPublishFailed(job.Id, ex);
         }
     }
-
-    /// <summary>
-    /// Reintenta la query de stats (los timeouts transitorios tras una carga pesada son
-    /// esperables); si agota los reintentos devuelve stats vacías y lo loguea: el evento
-    /// se publica igual porque perder la notificación por un timeout de lectura es peor
-    /// que un email con stats degradadas.
-    /// </summary>
-    private async Task<ImportStats> GetStatsWithFallbackAsync(Guid jobId, CancellationToken cancellationToken)
-    {
-        const int maxAttempts = 3;
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                return await jobStore.GetImportStatsAsync(jobId, cancellationToken);
-            }
-            catch (Exception ex) when (attempt < maxAttempts && ex is not OperationCanceledException)
-            {
-                LogStatsRetry(jobId, attempt, ex);
-                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogStatsUnavailable(jobId, ex);
-                return new ImportStats(0, 0, 0);
-            }
-        }
-    }
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read import stats for job {JobId} (attempt {Attempt}); retrying before publishing ImportCompletedEvent")]
-    private partial void LogStatsRetry(Guid jobId, int attempt, Exception exception);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read import stats for job {JobId} after retries; publishing ImportCompletedEvent with zeroed stats instead of losing the notification")]
-    private partial void LogStatsUnavailable(Guid jobId, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to publish ImportCompletedEvent for job {JobId}; the import stays completed")]
     private partial void LogEventPublishFailed(Guid jobId, Exception exception);

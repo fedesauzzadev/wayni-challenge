@@ -11,6 +11,5 @@ public interface IImportJobStore
     Task SaveAsync(ImportJob job, CancellationToken cancellationToken);
     Task<ImportJob?> ClaimNextAsync(string leaseOwner, DateTimeOffset utcNow, DateTimeOffset heartbeatCutoff, CancellationToken cancellationToken);
     Task<bool> RenewLeaseAsync(Guid jobId, string leaseOwner, DateTimeOffset utcNow, CancellationToken cancellationToken);
-    Task<ImportStats> GetImportStatsAsync(Guid importId, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, int>> CountByStatusAsync(CancellationToken cancellationToken);
 }

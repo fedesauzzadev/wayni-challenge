@@ -21,9 +21,6 @@ public sealed class ImportCompletedMessageHandlerTests
         202311,
         1_000,
         3,
-        25,
-        5,
-        123_456.7m,
         4_321.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 
@@ -70,9 +67,6 @@ public sealed class ImportCompletedMessageHandlerTests
                 && e.Periodo == importCompleted.Periodo
                 && e.LinesProcessed == importCompleted.LinesProcessed
                 && e.LinesRejected == importCompleted.LinesRejected
-                && e.TotalDeudores == importCompleted.TotalDeudores
-                && e.TotalEntidades == importCompleted.TotalEntidades
-                && e.SumaTotalPrestamos == importCompleted.SumaTotalPrestamos
                 && e.DurationMs == importCompleted.DurationMs
                 && e.CompletedAtUtc == importCompleted.CompletedAtUtc),
             Arg.Any<CancellationToken>());

@@ -22,9 +22,6 @@ public sealed class EmailNotifierTests
         202311,
         10,
         0,
-        4,
-        2,
-        99.9m,
         12.5,
         new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
 
@@ -58,9 +55,7 @@ public sealed class EmailNotifierTests
         message.Subject.Should().Contain("202311");
         message.Body.Should()
             .Contain("Lineas procesadas: 10")
-            .And.Contain("Total deudores: 4")
-            .And.Contain("Total entidades: 2")
-            .And.Contain("Suma total prestamos: 99.9")
+            .And.Contain("Lineas rechazadas: 0")
             .And.Contain("Duracion: 12.5 ms");
     }
 
