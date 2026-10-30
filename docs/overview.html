@@ -127,6 +127,8 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
   <a href="#solucion">Cómo se resolvió</a>
   <a href="#decisiones">Decisiones clave (ADRs)</a>
   <a href="#arquitectura">Arquitectura del sistema</a>
+  <a href="#entorno">El entorno local</a>
+  <a href="#contratos">Contratos y modelo de datos</a>
   <a href="#concurrencia">Concurrencia y bloqueos</a>
   <a href="#uso">Cómo usarlo</a>
   <a href="#complementos">Datos complementarios</a>
@@ -149,6 +151,9 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
     <span class="badge">OpenTelemetry</span>
     <span class="badge">Prometheus</span>
     <span class="badge">Grafana</span>
+    <span class="badge">Admin UI · React 19</span>
+    <span class="badge">Mailpit</span>
+    <span class="badge">CI · GitHub Actions</span>
     <span class="badge">xUnit + Testcontainers</span>
   </div>
 </header>
@@ -163,12 +168,15 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <li><strong>Concurrencia resuelta 100 % en la base de datos</strong>: <code>FOR UPDATE SKIP LOCKED</code> + lease con heartbeat, índice único parcial para un solo import activo e <code>INSERT ... ON CONFLICT DO NOTHING</code> para idempotencia. Sin locks distribuidos ni afinidad de sesión.</li>
       <li><strong>Resiliente por diseño</strong>: reanudación desde checkpoint sin duplicar filas, takeover de workers caídos al vencer el lease, y detección de fuente modificada (ETag/size).</li>
       <li><strong>Observabilidad integrada</strong>: OpenTelemetry en los 3 servicios, <code>/metrics</code> en formato Prometheus y dashboard de Grafana aprovisionado, sin setup manual.</li>
+      <li><strong>Interfaz de administración incluida</strong>: web React + BFF (<code>npm run setup</code> levanta todo el entorno en un comando) para cargar el archivo con progreso en 2 fases, seguir el import en vivo, consultar deudores/entidades y gestionar los emails de notificación. Los secretos viven solo en el BFF.</li>
       <li><strong>Performance medida</strong> con el dataset real: end-to-end ≈ 486 s (~8 min), con ~78.400 líneas válidas/s en la fase de staging.</li>
+      <li><strong>CI en GitHub Actions</strong>: build sin warnings + 274 tests (217 .NET entre unitarios y de integración con Testcontainers, más 57 del frontend con typecheck) en cada push y PR.</li>
     </ul>
     <div class="stats">
       <div class="stat"><b>34.385.567</b><span>líneas del dataset de muestra (~5,9 GB)</span></div>
       <div class="stat"><b>~78.400/s</b><span>líneas válidas COPY-eadas a staging</span></div>
       <div class="stat"><b>~486 s</b><span>import end-to-end (~8 min)</span></div>
+      <div class="stat"><b>10</b><span>piezas que levanta el setup (8 contenedores + BFF + web)</span></div>
       <div class="stat"><b>0</b><span>locks distribuidos · usos de SERIALIZABLE o LOCK TABLE</span></div>
     </div>
   </div>
@@ -216,7 +224,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
 
 <section id="decisiones">
   <h2><span class="num">04</span>Decisiones clave</h2>
-  <p class="lead">Resumen de los ADRs 005–009 (detalle completo en <code>docs/adr/</code>).</p>
+  <p class="lead">Resumen de los ADRs 005–010 (detalle completo en <code>docs/adr/</code>).</p>
   <div class="adrs">
     <div class="adr">
       <span class="adr-id">ADR-005</span>
@@ -277,6 +285,18 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <span class="lbl">Consecuencias</span>
       <p>Observabilidad de punta a punta con stack estándar y cero setup manual; el throughput queda medible, habilitando el tuning de batch/pool basado en datos. El dashboard es provisionado (no editable desde la UI sin desactivar el provisioning) y las métricas viven en memoria del proceso (la historia queda en Prometheus).</p>
       <p class="more"><a href="adr/ADR-009-observabilidad-opentelemetry.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr" style="grid-column:1/-1">
+      <span class="adr-id">ADR-010</span>
+      <h4>Notifier at-least-once con Idempotency-Key declarativa</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>El notifier consume <code>import-completed</code> de SQS con fan-out a N notificadores (log estructurado siempre, webhook opcional, email) y aborta al primer fallo. El mensaje NO se borra si alguna notificación falla: SQS lo reentrega tras el visibility timeout, por lo que la entrega es at-least-once.</p>
+      <span class="lbl">Decisión</span>
+      <p>Aceptar la semántica at-least-once y declararla al receptor: el POST del webhook incluye el header <code>Idempotency-Key: &lt;JobId&gt;</code> para que el receptor deduplique las re-entregas. El notifier no persiste estado de entrega (sigue stateless); <code>JobId</code> es la clave natural (un import completado = un evento). Cada mensaje del lote se aísla con try/catch: una excepción no anticipada no retrasa los demás.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Sin infraestructura extra de idempotencia en el notifier y semántica honesta en código y docs. Riesgo residual asumido: si el receptor ignora el header, las re-entregas notifican dos veces; aceptable para notificaciones de fin de import.</p>
+      <p class="more"><a href="adr/ADR-010-notifier-at-least-once-webhook.md">Ver ADR completo →</a></p>
     </div>
   </div>
   <p class="note">El repositorio además documenta las decisiones estructurales previas en <code>docs/adr/</code>: ADR-001 (PostgreSQL como persistencia), ADR-002 (ELT: staging then SQL), ADR-003 (situación de máximo literal) y ADR-004 (base compartida entre servicios).</p>
@@ -361,6 +381,104 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <figcaption>Pipeline ELT: upload idempotente → ingestion (staging → agregación → swap) sobre PostgreSQL → consulta MVCC; notificación vía SQS → notifier; observabilidad con Prometheus + Grafana.</figcaption>
     </figure>
 
+    <h3 style="margin-top:2.2rem">Flujo completo del entorno local <span style="font-weight:400;color:var(--muted);font-size:.82rem">(qué levanta <code>npm run setup</code> y quién habla con quién)</span></h3>
+    <figure class="fig">
+      <svg class="pipe" viewBox="0 0 1160 584" role="img" aria-labelledby="envTitle">
+        <title id="envTitle">Flujo completo del entorno local: la web React (:5173) habla con el BFF Express (:4000), que entrega el archivo al DATA_DIR compartido o a S3 de LocalStack y llama a POST /imports del ingestion (:18080); el ingestion procesa sobre PostgreSQL (:5544) y publica el ImportCompletedEvent en la cola SQS; el notifier (:18082) la consume con long-poll y envía email vía Mailpit (:8025) o webhook opcional; el query-service (:18081) lee la versión activa con rol readonly; Prometheus y Grafana observan los tres servicios.</title>
+        <g filter="url(#ds)">
+          <rect class="n" x="16" y="28" width="180" height="76" rx="12"/>
+          <text class="t" x="106" y="58">Web React</text>
+          <text class="s" x="106" y="80">:5173 · 3 pestañas</text>
+          <text class="s" x="106" y="96">admin UI (Vite)</text>
+
+          <rect class="n" x="340" y="28" width="200" height="76" rx="12"/>
+          <text class="t tt" x="440" y="58">Query service</text>
+          <text class="s" x="440" y="80">:18081 · rol readonly</text>
+          <text class="s" x="440" y="96">MVCC, sin locks</text>
+
+          <rect x="760" y="28" width="384" height="76" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6 5"/>
+          <text class="t" x="952" y="54" style="fill:#475569">Observabilidad</text>
+          <text class="s" x="952" y="76">Prometheus :9090 — scrapea /metrics de los 3 servicios</text>
+          <text class="s" x="952" y="94">Grafana :3000 — dashboard provisionado</text>
+
+          <rect class="n" x="16" y="150" width="180" height="100" rx="12"/>
+          <text class="t" x="106" y="180">BFF Express</text>
+          <text class="s" x="106" y="202">:4000 · proxy + upload</text>
+          <text class="s" x="106" y="220">recipients (Postgres)</text>
+          <text class="s" x="106" y="238">secretos solo acá</text>
+
+          <rect class="n" x="340" y="150" width="200" height="100" rx="12"/>
+          <text class="t tt" x="440" y="180">Ingestion service</text>
+          <text class="s" x="440" y="202">:18080 · POST /imports</text>
+          <text class="s" x="440" y="220">worker ELT bajo lease</text>
+          <text class="s" x="440" y="238">staging → agg → swap</text>
+
+          <rect class="n" x="760" y="150" width="384" height="110" rx="12"/>
+          <text class="t ta" x="952" y="180">PostgreSQL :5544</text>
+          <text class="s" x="952" y="202">debt_staging (part.) · deudor_agg · entidad_agg</text>
+          <text class="s" x="952" y="220">active_import · import_job · maestros</text>
+          <text class="s" x="952" y="238">roles: owner + bcra_readonly</text>
+
+          <rect class="n" x="16" y="310" width="230" height="96" rx="12"/>
+          <text class="t ta" x="131" y="340">SQS import-completed</text>
+          <text class="s" x="131" y="362">LocalStack :4566</text>
+          <text class="s" x="131" y="380">at-least-once (visibilidad)</text>
+
+          <rect class="n" x="440" y="310" width="260" height="96" rx="12"/>
+          <text class="t" x="570" y="336">Fuente del archivo (upload)</text>
+          <rect class="pill" x="456" y="350" width="122" height="26" rx="13"/><text class="pt" x="517" y="367">DATA_DIR /data</text>
+          <rect class="pill" x="588" y="350" width="98" height="26" rx="13"/><text class="pt" x="637" y="367">S3 bcra-local</text>
+          <text class="s" x="570" y="394">entrega directa o vía S3</text>
+
+          <rect class="n" x="340" y="452" width="200" height="90" rx="12"/>
+          <text class="t tt" x="440" y="482">Notifier</text>
+          <text class="s" x="440" y="504">:18082 · long-poll 20 s</text>
+          <text class="s" x="440" y="522">log + email + webhook</text>
+
+          <rect class="n" x="640" y="452" width="180" height="90" rx="12"/>
+          <text class="t" x="730" y="482">Mailpit</text>
+          <text class="s" x="730" y="504">:8025 · bandeja web</text>
+          <text class="s" x="730" y="522">SMTP :1025</text>
+
+          <rect x="900" y="452" width="200" height="64" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6 5"/>
+          <text class="t" x="1000" y="480" style="fill:#475569">Webhook opcional</text>
+          <text class="s" x="1000" y="500">WEBHOOK_URL (HTTP POST)</text>
+        </g>
+        <path class="flow" d="M106 104 V146" marker-end="url(#arw)"/>
+        <text class="lg" x="118" y="130">/api</text>
+        <path class="flow" d="M196 176 H336" marker-end="url(#arw)"/>
+        <text class="lg" x="266" y="166" text-anchor="middle">POST /imports</text>
+        <text class="lg" x="266" y="192" text-anchor="middle">X-Api-Key · idempotente</text>
+        <path class="flow" d="M196 160 C 250 160, 250 66, 336 66" marker-end="url(#arw)"/>
+        <text class="lg" x="248" y="106" text-anchor="middle">consultas GET</text>
+        <path class="flow" d="M540 176 H756" marker-end="url(#arw)"/>
+        <text class="lg" x="648" y="166" text-anchor="middle">staging → agg → swap</text>
+        <text class="lg" x="648" y="192" text-anchor="middle">rol owner · DbUp</text>
+        <path class="flow" d="M540 64 C 660 64, 660 186, 756 186" marker-end="url(#arw)"/>
+        <text class="lg" x="648" y="96" text-anchor="middle">bcra_readonly · MVCC</text>
+        <path class="flow" d="M196 196 C 246 196, 246 358, 434 358" marker-end="url(#arw)"/>
+        <text class="lg" x="250" y="290" text-anchor="middle">entrega archivo</text>
+        <text class="lg" x="250" y="308" text-anchor="middle">(local o S3)</text>
+        <path class="flow" d="M520 306 V254" marker-end="url(#arw)"/>
+        <text class="lg" x="520" y="286" text-anchor="middle">lee (ETag · rango)</text>
+        <path class="evt" d="M370 254 V400 H254" marker-end="url(#arwT)"/>
+        <text class="lblE" transform="rotate(-90 352 328)" x="352" y="328" text-anchor="middle">ImportCompletedEvent</text>
+        <path class="evt" d="M246 380 C 292 380, 290 497, 336 497" marker-end="url(#arwT)"/>
+        <text class="lg" x="252" y="436">long-poll 20 s</text>
+        <path class="flow" d="M540 497 H636" marker-end="url(#arw)"/>
+        <text class="lg" x="588" y="488" text-anchor="middle">SMTP</text>
+        <path class="obs" d="M540 478 C 640 440, 830 438, 894 470" marker-end="url(#arwG)"/>
+        <text class="lg" x="740" y="440" text-anchor="middle">opcional</text>
+        <path class="flow" d="M16 566 H56"/>
+        <text class="lg" x="64" y="570">flujo de datos</text>
+        <path class="evt" d="M200 566 H240"/>
+        <text class="lg" x="248" y="570">evento import-completed</text>
+        <path class="obs" d="M440 566 H480"/>
+        <text class="lg" x="488" y="570">opcional / observabilidad</text>
+      </svg>
+      <figcaption>Flujo completo del entorno: la web nunca habla directo con los microservicios (todo pasa por el BFF, único proceso con secretos); el archivo llega por DATA_DIR o S3 y el ingestion lo lee con ETag/rango; el evento de finalización viaja por SQS y termina en Mailpit (o webhook). Contrato completo en la sección <a href="#entorno">El entorno local</a>.</figcaption>
+    </figure>
+
     <h3>Flujo de un import (concurrencia)</h3>
     <ol class="flow">
       <li><strong>Upload idempotente</strong>: <code>POST /imports</code> hace <code>INSERT ... ON CONFLICT (source, etag, periodo) DO NOTHING</code>; duplicado → devuelve el job existente con <code>alreadyExisted=true</code> (201 nuevo / 200 existente).</li>
@@ -372,8 +490,73 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
   </div>
 </section>
 
+<section id="entorno">
+  <h2><span class="num">06</span>El entorno local: qué levanta el setup</h2>
+  <p class="lead">Diez piezas coordinadas: ocho contenedores del compose y dos procesos Node en el host.</p>
+  <div class="card">
+    <p><code>npm run setup</code> (<code>scripts/setup.mjs</code>, solo builtins de Node ≥ 18) crea <code>.env</code> desde <code>.env.example</code> si no existe, ejecuta <code>docker compose up -d --build</code>, espera el <code>/health/live</code> de las 3 APIs (con timeout), instala las dependencias del BFF y la web, arranca ambos procesos en paralelo y abre el browser. <code>Ctrl+C</code> detiene BFF y web; el stack docker sigue corriendo (<code>docker compose down</code> lo detiene). Para el loop código → rebuild → prueba existe <code>npm run rebuild [servicio]</code>, que reconstruye solo los servicios .NET pedidos y espera su healthcheck.</p>
+
+    <h3>Inventario del stack</h3>
+    <table>
+      <thead><tr><th style="width:15%">Pieza</th><th style="width:15%">Tecnología</th><th style="width:11%">Puerto(s)</th><th>Rol funcional</th><th style="width:16%">Depende de</th></tr></thead>
+      <tbody>
+        <tr><td><code>postgres</code></td><td>PostgreSQL 16.4-alpine</td><td><code>:5544</code></td><td>Única fuente de verdad del sistema: staging, agregados, <code>active_import</code>, maestros de referencia y <code>notification_recipient</code>. <code>shm_size 1 gb</code> para el VACUUM paralelo post-import (~20 M de filas).</td><td>—</td></tr>
+        <tr><td><code>localstack</code></td><td>LocalStack 3.8.1 (sqs + s3)</td><td><code>:4566</code></td><td>AWS emulado: bucket <code>bcra-local</code> (uploads en modo S3) y cola <code>import-completed</code>. <code>init/01-init.sh</code> crea ambos de forma idempotente al arrancar.</td><td>—</td></tr>
+        <tr><td><code>ingestion-api</code></td><td>.NET 10 · minimal API</td><td><code>:18080</code></td><td>Orquestador del pipeline: acepta <code>POST /imports</code> (API key), ejecuta el worker bajo lease (staging → agregación → índices → swap → cleanup), aplica las migraciones DbUp al arrancar y publica el evento de finalización. Monta <code>DATA_DIR</code> como <code>/data:ro</code>.</td><td>postgres (healthy)</td></tr>
+        <tr><td><code>query-api</code></td><td>.NET 10 · minimal API</td><td><code>:18081</code></td><td>Read-model de consulta: deudores, entidades y totales del import activo. Conecta con el rol <code>bcra_readonly</code>; lecturas MVCC sin locks.</td><td>postgres + ingestion (migraciones)</td></tr>
+        <tr><td><code>mailpit</code></td><td>Mailpit v1.32</td><td><code>:1025</code> SMTP · <code>:8025</code> UI</td><td>SMTP local que captura los emails de "import completado" sin enviarlos de verdad; bandeja web para verificarlos. Cambiando <code>SMTP_HOST</code> se pasa a un SMTP real (p. ej. Gmail con app-password).</td><td>—</td></tr>
+        <tr><td><code>notifier-api</code></td><td>.NET 10 · minimal API</td><td><code>:18082</code></td><td>Consumidor de la cola: long-poll de 20 s sobre <code>import-completed</code>, notifica (log estructurado + email a los destinatarios registrados + webhook opcional) y borra el mensaje solo si la notificación fue OK (semántica at-least-once, <a href="adr/ADR-010-notifier-at-least-once-webhook.md">ADR-010</a>). El readiness chequea SQS.</td><td>postgres, localstack, mailpit</td></tr>
+        <tr><td><code>prometheus</code></td><td>Prometheus v3.4.2</td><td><code>:9090</code></td><td>Scrapea <code>/metrics</code> de los 3 servicios .NET (retención 15 días); config en <code>observability/prometheus.yml</code>.</td><td>—</td></tr>
+        <tr><td><code>grafana</code></td><td>Grafana 12.0.2</td><td><code>:3000</code></td><td>Dashboard "BCRA — Pipeline de import de deudores" con datasource y dashboard aprovisionados (sin setup manual); viewer anónimo o admin/admin.</td><td>prometheus</td></tr>
+        <tr><td>BFF <em>(host)</em></td><td>Express 5 + TypeScript</td><td><code>:4000</code></td><td>Backend-for-frontend: proxy de las consultas, upload en 2 fases con destino <code>local</code> (copia al <code>DATA_DIR</code>) o <code>s3</code>, y CRUD de destinatarios de email. Único proceso con los secretos (<code>UPLOAD_API_KEY</code>, creds AWS, password DB).</td><td>ingestion, query, postgres, DATA_DIR/S3</td></tr>
+        <tr><td>Web <em>(host)</em></td><td>React 19 + Vite + Tailwind v4</td><td><code>:5173</code></td><td>Admin UI con 3 pestañas: Archivo (última carga + upload con progreso + emails), Deudores (grilla paginada) y Entidades (grilla con filtro + totales). Nunca habla directo con los microservicios.</td><td>BFF</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Los primeros ocho son contenedores del <code>docker-compose.yml</code> (red <code>bcra</code>); BFF y web son procesos del host que <code>npm run setup</code> deja corriendo en modo dev. La web de Vite proxya <code>/api</code> al BFF en desarrollo.</p>
+  </div>
+</section>
+
+<section id="contratos">
+  <h2><span class="num">07</span>Contratos funcionales y modelo de datos</h2>
+  <p class="lead">Qué expone cada pieza y cómo se organiza la información.</p>
+  <div class="card">
+    <h3>Endpoints por servicio</h3>
+    <table>
+      <thead><tr><th style="width:16%">Servicio</th><th style="width:34%">Endpoint</th><th>Función</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="4"><strong>Ingestion</strong><br><code>:18080</code></td><td><code>POST /imports</code> <span style="font-size:.76rem;color:var(--muted)">(header <code>X-Api-Key</code>)</span></td><td>Solicita un import (body: <code>source</code>, <code>etag</code>, <code>size</code>, <code>periodo</code>). Idempotente por <code>(source, etag, periodo)</code>: 201 nuevo / 200 existente con <code>alreadyExisted=true</code>.</td></tr>
+        <tr><td><code>GET /imports/{id}</code></td><td>Estado del job: status, <code>bytesCommitted</code>, líneas (procesadas / rechazadas / de control), <code>loadingProgressPercent</code>, timestamps. Es el polling de la fase (b) del upload.</td></tr>
+        <tr><td><code>GET /imports/latest</code></td><td>El job más reciente (o 404); base de la pestaña Archivo.</td></tr>
+        <tr><td><code>/health/live · /health/ready · /metrics</code></td><td>Probes y métricas Prometheus (métricas custom del pipeline).</td></tr>
+        <tr><td rowspan="3"><strong>Query</strong><br><code>:18081</code></td><td><code>GET /deudores?offset&amp;limit&amp;top&amp;omitirSinNombre</code></td><td>Ranking paginado de deudores del import activo (respeta <code>Query:TopMax</code>); envelope con <code>total</code>.</td></tr>
+        <tr><td><code>GET /deudores/{cuit}</code> · <code>GET /entidades/{codigo}</code> · <code>GET /entidades?codigo=</code> · <code>GET /totales</code></td><td>Resumen por CUIT (situación máxima, suma, nombre), entidades con filtro exacto/parcial y totales precomputados del import activo. <code>503</code> si no hay import activo.</td></tr>
+        <tr><td><code>/health/*</code> · <code>/metrics</code></td><td>Probes y métricas.</td></tr>
+        <tr><td><strong>Notifier</strong><br><code>:18082</code></td><td><code>/health/ready</code> · <code>/metrics</code></td><td>Sin endpoints de negocio: es un consumidor de cola. El readiness incluye el chequeo de SQS.</td></tr>
+        <tr><td rowspan="3"><strong>BFF</strong><br><code>:4000</code></td><td><code>GET /health</code></td><td>Liveness del BFF.</td></tr>
+        <tr><td><code>POST /api/imports/upload</code></td><td>Multipart (<code>file</code> + <code>periodo</code> + opcionales <code>maeent</code>/<code>nomdeu</code> + <code>storage=local|s3</code>): entrega el archivo y crea el import; agrega el <code>X-Api-Key</code> del lado server.</td></tr>
+        <tr><td><code>GET /api/imports/latest</code> · <code>GET /api/imports/:id</code> · <code>GET /api/deudores</code> · <code>GET /api/entidades</code> · <code>GET /api/totales</code> · <code>GET/POST/DELETE /api/notification-recipients</code></td><td>Proxy fino hacia ingestion/query (404 upstream → <code>{latest:null}</code>) y CRUD de destinatarios sobre Postgres.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Contratos OpenAPI 3.1 completos (generados en el build) en <a href="openapi/ingestion.json">ingestion.json</a>, <a href="openapi/query.json">query.json</a> y <a href="openapi/notifier.json">notifier.json</a>. Errores upstream del BFF → <code>502</code>; el resto se propaga status + body.</p>
+
+    <h3 style="margin-top:1.8rem">Modelo de datos (PostgreSQL)</h3>
+    <table>
+      <thead><tr><th style="width:20%">Tabla</th><th>Propósito</th><th style="width:26%">Quién escribe / lee</th></tr></thead>
+      <tbody>
+        <tr><td><code>import_job</code></td><td>Máquina de estados del import (<em>Pending → Loading → Aggregating → Completed | Failed</em>), checkpoint (<code>bytes_committed</code>, líneas por clase, totales precomputados) y lease (<code>lease_owner</code>, <code>heartbeat_at</code>). Índices únicos: <code>(source, etag, periodo)</code> para idempotencia y parcial <code>single_active</code> para un solo import en ejecución.</td><td>ingestion (owner) escribe · query lee</td></tr>
+        <tr><td><code>debt_staging</code> <span style="font-size:.76rem;color:var(--muted)">(particionada por <code>import_id</code>)</span></td><td>Líneas crudas del archivo cargadas por COPY binario por lotes; el cleanup post-swap es <code>DROP TABLE</code> de la partición del import anterior (nunca <code>DELETE</code> masivo).</td><td>ingestion</td></tr>
+        <tr><td><code>deudor_agg</code> · <code>entidad_agg</code></td><td>Agregados por import: por CUIT (situación máxima, suma total) y por entidad (suma total). Re-agregación idempotente (DELETE previo por <code>import_id</code>); post-swap se borran los del import anterior.</td><td>ingestion escribe · query lee</td></tr>
+        <tr><td><code>active_import</code></td><td>Fila única (<code>id=1</code>) que apunta al import publicado; el swap es un <code>UPDATE</code> corto con <code>FOR UPDATE</code>. Los lectores resuelven siempre una versión consistente.</td><td>ingestion escribe · query lee</td></tr>
+        <tr><td><code>entidad</code> · <code>deudor_nombre</code></td><td>Maestros de referencia cargados de <code>Maeent.txt</code> (entidades) y <code>Nomdeu.txt</code> (nombres por CUIT).</td><td>ingestion escribe · query lee</td></tr>
+        <tr><td><code>notification_recipient</code></td><td>Destinatarios de email gestionados desde la admin UI; tabla vacía → fallback a <code>Notifications:Email__To</code>.</td><td>BFF escribe (owner) · notifier lee (readonly)</td></tr>
+      </tbody>
+    </table>
+    <p class="note"><strong>Roles:</strong> ingestion conecta como owner (migraciones DbUp + escrituras); query y notifier con el rol <code>bcra_readonly</code> (solo <code>SELECT</code>); el BFF usa el rol owner únicamente para <code>notification_recipient</code>. Las migraciones viven en <code>Bcra.Ingestion.Infrastructure/Persistence/Migrations/Scripts</code> (001–008) y se aplican al arranque del ingestion.</p>
+  </div>
+</section>
+
 <section id="concurrencia">
-  <h2><span class="num">06</span>Concurrencia y bloqueos</h2>
+  <h2><span class="num">08</span>Concurrencia y bloqueos</h2>
   <p class="lead">Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de sesión.</p>
   <div class="card">
     <table>
@@ -397,7 +580,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
 </section>
 
 <section id="uso">
-  <h2><span class="num">07</span>Cómo usarlo</h2>
+  <h2><span class="num">09</span>Cómo usarlo</h2>
   <p class="lead">Build, tests, stack completo y observabilidad.</p>
   <div class="card">
     <h3>Build y tests</h3>
@@ -407,6 +590,12 @@ dotnet test tests/unit/Bcra.Ingestion.Application.Tests
 dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests
 dotnet test tests/unit/Bcra.Notifier.Application.Tests
 dotnet test tests/integration/Bcra.Ingestion.IntegrationTests   <span class="c"># requiere Docker (Testcontainers)</span></code></pre></div>
+
+    <h3>Todo en un comando (admin UI)</h3>
+    <div class="pre"><pre><code>npm run setup                                                  <span class="c"># compose completo + BFF (:4000) + web (:5173) + browser</span>
+npm run rebuild                                                <span class="c"># rebuild+restart de los servicios .NET (o "npm run rebuild ingestion")</span>
+npm test                                                       <span class="c"># en frontend/bff y frontend/web (vitest)</span></code></pre></div>
+    <p class="note">La admin UI (detalle en <code>docs/admin-ui.md</code>): pestañas <strong>Archivo</strong> (última carga + upload con progreso + emails de notificación), <strong>Deudores</strong> (grilla paginada) y <strong>Entidades</strong> (filtro por código + totales). Los emails caen en Mailpit (<code>http://localhost:8025</code>). Qué levanta cada pieza: sección <a href="#entorno">El entorno local</a>.</p>
 
     <h3>Stack completo (compose)</h3>
     <div class="pre"><pre><code>docker compose up -d --build                                    <span class="c"># stack completo con LocalStack + Prometheus + Grafana</span>
@@ -445,7 +634,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
 </section>
 
 <section id="complementos">
-  <h2><span class="num">08</span>Datos complementarios</h2>
+  <h2><span class="num">10</span>Datos complementarios</h2>
   <p class="lead">Stack, estructura del repo, tests, fuentes de datos y configuración.</p>
   <div class="card">
     <h3>Stack</h3>
@@ -460,14 +649,19 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">OpenTelemetry</span>
       <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Prometheus v3.4.2</span>
       <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Grafana 12.0.2</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Mailpit</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">React 19 · Express 5 · Vite</span>
       <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Docker Compose</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">GitHub Actions</span>
       <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">xUnit + Testcontainers</span>
     </div>
 
     <h3>Estructura del repositorio</h3>
     <div class="pre"><pre class="tree"><code>Wayni Challenge/
 ├── Bcra.Microservices.sln
-├── docker-compose.yml          <span class="c"># postgres, localstack, 3 apis, prometheus, grafana</span>
+├── docker-compose.yml          <span class="c"># postgres, localstack, 3 apis, mailpit, prometheus, grafana</span>
+├── .github/workflows/ci.yml    <span class="c"># CI: build + 217 tests .NET + 57 del frontend (2 jobs)</span>
+├── global.json                 <span class="c"># fija el SDK .NET 10</span>
 ├── .env.example                <span class="c"># configuración del entorno local</span>
 ├── src/
 │   ├── services/
@@ -475,11 +669,17 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
 │   │   ├── query/              <span class="c"># Bcra.Query.{Api,Application,Domain,Infrastructure}</span>
 │   │   └── notifier/           <span class="c"># Bcra.Notifier.{Api,Application,Domain,Infrastructure}</span>
 │   └── shared/                 <span class="c"># Bcra.Shared.{Domain,Infrastructure} (helper AddObservability)</span>
+├── frontend/
+│   ├── bff/                    <span class="c"># BFF Express + TS (upload, proxy, recipients)</span>
+│   └── web/                    <span class="c"># admin UI React 19 + Vite + Tailwind v4</span>
+├── scripts/                    <span class="c"># setup.mjs (entorno completo) · rebuild.mjs (loop dev)</span>
 ├── tests/
-│   ├── unit/                   <span class="c"># 4 proyectos de tests unitarios</span>
-│   └── integration/            <span class="c"># Bcra.Ingestion.IntegrationTests (Testcontainers)</span>
+│   ├── unit/                   <span class="c"># 5 proyectos de tests unitarios</span>
+│   └── integration/            <span class="c"># ingestion + query (Testcontainers)</span>
 ├── docs/
-│   ├── adr/                    <span class="c"># ADR-001 .. ADR-009</span>
+│   ├── adr/                    <span class="c"># ADR-001 .. ADR-010</span>
+│   ├── openapi/                <span class="c"># contratos OpenAPI generados en el build</span>
+│   ├── admin-ui.md             <span class="c"># detalle de la interfaz de administración</span>
 │   └── overview.html           <span class="c"># este documento</span>
 ├── localstack/init/            <span class="c"># 01-init.sh: bucket + cola (idempotente)</span>
 ├── observability/              <span class="c"># prometheus.yml + provisioning de Grafana</span>
@@ -490,7 +690,10 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       <li><code>tests/unit/Bcra.Ingestion.Domain.Tests</code> — ciclo de vida del job, reclamo y decisión de lease vencido con reloj inyectable (<code>TimeProvider</code>).</li>
       <li><code>tests/unit/Bcra.Ingestion.Application.Tests</code> — checkpoint por lote y offset de reanudación de <code>StagingCopyLoader</code> (commit atómico lote+checkpoint, fuente modificada).</li>
       <li><code>tests/unit/Bcra.Ingestion.Infrastructure.Tests</code> — ruteo <code>s3://</code> con allow-list de buckets, offset/rango y ETag de <code>S3FileSource</code>, y publicación SQS del evento.</li>
-      <li><code>tests/unit/Bcra.Notifier.Application.Tests</code> — manejo del mensaje (parseo, delete condicional, requeue por fallo) y <code>WebhookNotifier</code>.</li>
+      <li><code>tests/unit/Bcra.Shared.Domain.Tests</code> — contratos compartidos (<code>Result</code>, serialización del <code>ImportCompletedEvent</code>).</li>
+      <li><code>tests/unit/Bcra.Notifier.Application.Tests</code> — manejo del mensaje (parseo, delete condicional, requeue por fallo), <code>WebhookNotifier</code> e <code>EmailNotifier</code>.</li>
+      <li><code>tests/integration/Bcra.Query.IntegrationTests</code> — Testcontainers + PostgreSQL real: endpoints de consulta (por CUIT, top, entidades, totales) contra el import activo, paginación/<code>TopMax</code> y filtro por código de entidad.</li>
+      <li><strong>Frontend</strong> — <code>frontend/bff</code>: 30 tests con vitest + supertest (upload local/S3 con referencias, proxy, recipients, config); <code>frontend/web</code>: 27 tests con Testing Library (las 3 páginas, DataGrid con paginación, upload con progreso) + typecheck <code>tsc</code>. Ambos corren en la CI de GitHub Actions junto al build .NET sin warnings.</li>
       <li><code>tests/integration/Bcra.Ingestion.IntegrationTests</code> — Testcontainers + PostgreSQL real: (a) dos workers, un ganador; (b) uploads simultáneos → un solo job y una sola ejecución; (c) segundo import queda Pending mientras hay uno activo; (d) lecturas concurrentes al swap ven versión vieja o nueva, nunca mixta; (e) import completado publica <code>ImportCompletedEvent</code> con agregados y el fallo del publish no falla el import; (f) reanudación: takeover de Loading tras lease vencido completa sin duplicados, takeover de Aggregating re-agrega idempotente, fuente modificada → Failed.</li>
     </ul>
 

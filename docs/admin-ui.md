@@ -83,7 +83,7 @@ Las URLs, el endpoint de S3 y el host de Postgres son opcionales (defaults sensa
 
 ```
 npm test              # frontend/bff (vitest + supertest, 30 tests)
-npm run build && npm test   # frontend/web (tsc + vite build; vitest, 21 tests)
+npm run build && npm test   # frontend/web (tsc + vite build; vitest, 27 tests)
 ```
 
 El BFF se prueba con upstream y store mockeados (`test/helpers.ts`); la web con Testing Library sobre las 3 páginas y componentes (DataGrid con paginación, RecipientesEmail, upload).
