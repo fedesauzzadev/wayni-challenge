@@ -2,6 +2,8 @@
 
 Solución de microservicios en .NET para el pipeline ELT de deudores financieros: ingestion → agregación → swap → consulta.
 
+> Documento de presentación del repositorio: [`docs/overview.html`](docs/overview.html) (HTML autocontenido, funciona offline con doble click).
+
 ## Concurrencia y bloqueos
 
 Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de sesión (ver `docs/adr/`).

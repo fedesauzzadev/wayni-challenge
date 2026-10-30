@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayni Challenge — Pipeline ELT de deudores bancarios (BCRA)</title>
+<style>
+:root{
+  --bg:#f4f6fa; --surface:#ffffff; --ink:#182136; --muted:#5a6474; --line:#e3e8f0;
+  --navy:#16233f; --navy2:#1f3158; --gold:#b45309; --gold2:#d97706; --teal:#0f766e;
+  --code-bg:#101a30; --code-ink:#dbe4f3; --radius:14px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:.86em;background:#e9edf4;color:#0f5c55;padding:.12em .42em;border-radius:6px;border:1px solid #dde3ec}
+h1,h2,h3,h4{line-height:1.25;color:var(--navy)}
+h3{font-size:1.18rem;margin:2rem 0 .7rem}
+p{margin:.6rem 0}
+.nav{position:fixed;inset:0 auto 0 0;width:248px;background:linear-gradient(180deg,var(--navy) 0%,#0e1830 100%);color:#c8d2e4;padding:26px 0;overflow-y:auto;z-index:10}
+.nav .brand{padding:0 22px 18px;border-bottom:1px solid rgba(255,255,255,.09);margin-bottom:14px}
+.nav .brand b{display:block;color:#fff;font-size:1.02rem;letter-spacing:.2px}
+.nav .brand span{font-size:.74rem;color:#8fa0bd;letter-spacing:.6px;text-transform:uppercase}
+.nav a{display:block;color:#b9c5da;padding:8px 22px;font-size:.9rem;border-left:3px solid transparent}
+.nav a:hover{color:#fff;background:rgba(255,255,255,.05);text-decoration:none}
+.nav a.active{color:#fff;border-left-color:var(--gold2);background:rgba(255,255,255,.07)}
+.nav .foot{margin-top:18px;padding:14px 22px 0;border-top:1px solid rgba(255,255,255,.09);font-size:.72rem;color:#7d8db0;line-height:1.5}
+main{margin-left:248px;padding:40px 44px 70px}
+.wrap{max-width:980px;margin:0 auto}
+section{scroll-margin-top:24px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:28px 32px;margin:26px 0;box-shadow:0 1px 2px rgba(22,35,63,.05),0 8px 28px rgba(22,35,63,.05)}
+.hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 55%,#27406f 100%);color:#e7edf8;border:none;border-radius:18px;padding:44px 46px;margin-top:0}
+.hero h1{color:#fff;font-size:2.05rem;margin:0 0 8px}
+.hero p{color:#b9c6de;font-size:1.06rem;max-width:46em;margin:.4rem 0 1.3rem}
+.hero .kicker{font-size:.75rem;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold2);font-weight:700;margin-bottom:12px}
+.badges{display:flex;flex-wrap:wrap;gap:8px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;font-weight:600;letter-spacing:.3px;padding:4px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.22);color:#dbe4f3;background:rgba(255,255,255,.07)}
+.badge.solid{background:rgba(217,119,6,.16);border-color:rgba(217,119,6,.45);color:#f4c07f}
+h2{display:flex;align-items:baseline;gap:12px;font-size:1.5rem;margin:44px 0 6px}
+h2 .num{font-family:var(--mono);font-size:.85rem;color:var(--gold);letter-spacing:1px}
+.lead{color:var(--muted);margin:0 0 10px;max-width:52em}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:20px 0 4px}
+.stat{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.stat b{display:block;font-size:1.45rem;color:var(--navy);font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.svc{border:1px solid var(--line);border-radius:12px;padding:18px 20px;background:#fbfcfe}
+.svc h4{margin:0 0 6px;font-size:1.02rem;display:flex;align-items:center;gap:8px}
+.svc p{font-size:.92rem;color:#43506a;margin:.35rem 0}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+ul.tight{margin:.5rem 0 .3rem;padding-left:22px}
+ul.tight li{margin:.4rem 0}
+ol.flow{margin:.5rem 0;padding-left:24px}
+ol.flow li{margin:.55rem 0}
+.adrs{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px}
+.adr{border:1px solid var(--line);border-left:4px solid var(--gold2);border-radius:12px;padding:18px 20px;background:#fffdf8}
+.adr h4{margin:0;font-size:.98rem;color:var(--navy)}
+.adr .adr-id{font-family:var(--mono);font-size:.74rem;color:var(--gold);letter-spacing:1px}
+.adr .lbl{display:block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#8b93a5;margin:10px 0 2px}
+.adr p{font-size:.86rem;color:#43506a;margin:.2rem 0}
+.adr .more{font-size:.78rem;font-weight:600}
+.tag{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.5px;padding:2px 10px;border-radius:999px;vertical-align:middle}
+.tag.ok{background:#e7f5f0;color:#0d5f56;border:1px solid #bfe3da}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.9rem}
+th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:1.1px;color:#57627a;background:#eef1f7;padding:10px 14px;border-bottom:2px solid #dbe1ea}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:#2c354a}
+tbody tr:hover{background:#f8fafc}
+td code{white-space:nowrap}
+.pre{position:relative}
+pre{background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:.84rem;line-height:1.7;border-radius:12px;padding:20px 22px;overflow-x:auto;margin:14px 0}
+pre code{background:none;border:none;color:inherit;padding:0;font-size:inherit}
+pre .c{color:#7e8ca8;font-style:italic}
+.fig{background:#fbfcfe;border:1px solid var(--line);border-radius:12px;padding:14px;margin:16px 0}
+.fig figcaption{font-size:.8rem;color:var(--muted);text-align:center;margin-top:8px}
+svg.pipe{width:100%;height:auto;display:block}
+svg.pipe text{font-family:var(--sans)}
+svg.pipe .t{font-size:15px;font-weight:700;fill:#16233f;text-anchor:middle}
+svg.pipe .tt{fill:#0f766e}
+svg.pipe .ta{fill:#b45309}
+svg.pipe .s{font-size:11.5px;fill:#5b6472;text-anchor:middle}
+svg.pipe .n{fill:#fff;stroke:#d3dbe7}
+svg.pipe .pill{fill:#f1f5f9;stroke:#cbd5e1}
+svg.pipe .pt{font-size:11px;fill:#334155;text-anchor:middle;font-weight:600}
+svg.pipe .flow{stroke:#64748b;stroke-width:1.8;fill:none}
+svg.pipe .evt{stroke:#0f766e;stroke-width:1.8;fill:none}
+svg.pipe .obs{stroke:#94a3b8;stroke-width:1.6;fill:none;stroke-dasharray:5 4}
+svg.pipe .lblE{font-size:11px;fill:#0f766e;font-weight:600}
+svg.pipe .lg{font-size:11px;fill:#5b6472}
+.tree{font-size:.84rem}
+.note{background:#f6f8fc;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:14px 18px;font-size:.9rem;color:#43506a;margin:14px 0}
+footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
+@media (max-width:960px){
+  .nav{position:sticky;top:0;width:100%;height:auto;display:flex;overflow-x:auto;padding:0;border-bottom:1px solid rgba(255,255,255,.12)}
+  .nav .brand{display:none}
+  .nav a{white-space:nowrap;border-left:none;border-bottom:3px solid transparent;padding:12px 16px}
+  .nav a.active{border-bottom-color:var(--gold2)}
+  .nav .foot{display:none}
+  main{margin-left:0;padding:22px 18px 50px}
+  .grid2,.adrs{grid-template-columns:1fr}
+  .hero{padding:30px 24px}
+  .card{padding:20px 18px}
+}
+@media print{
+  .nav{display:none}
+  main{margin:0;padding:0}
+  body{background:#fff}
+  .card,.hero{box-shadow:none;break-inside:avoid}
+  .hero{background:#fff;color:#000;border:1px solid #ccc}
+  .hero h1{color:#000}
+  .hero p{color:#333}
+  .badge{color:#333;border-color:#999;background:#f3f3f3}
+  pre{background:#f3f4f7;color:#111}
+  a{color:#0f766e}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Índice del documento">
+  <div class="brand"><b>Wayni Challenge</b><span>Pipeline ELT · BCRA</span></div>
+  <a href="#resumen">Resumen ejecutivo</a>
+  <a href="#objetivo">Objetivo del challenge</a>
+  <a href="#solucion">Cómo se resolvió</a>
+  <a href="#decisiones">Decisiones clave (ADRs)</a>
+  <a href="#arquitectura">Arquitectura del sistema</a>
+  <a href="#concurrencia">Concurrencia y bloqueos</a>
+  <a href="#uso">Cómo usarlo</a>
+  <a href="#complementos">Datos complementarios</a>
+  <div class="foot">Documento autocontenido · funciona offline · fuentes: <code style="background:none;border:none;color:#9fb0cf">README.md</code>, <code style="background:none;border:none;color:#9fb0cf">ARCHITECTURE.md</code>, <code style="background:none;border:none;color:#9fb0cf">docs/adr/</code></div>
+</nav>
+
+<main>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Presentación del repositorio</div>
+  <h1>Wayni Challenge</h1>
+  <p>Pipeline ELT de deudores bancarios (BCRA): ingestion → agregación → swap → consulta. Tres microservicios .NET con minimal APIs sobre PostgreSQL, con observabilidad OpenTelemetry de punta a punta.</p>
+  <div class="badges">
+    <span class="badge solid">.NET 10</span>
+    <span class="badge">C# · Minimal APIs</span>
+    <span class="badge">PostgreSQL 16</span>
+    <span class="badge">Docker Compose</span>
+    <span class="badge">LocalStack · S3 + SQS</span>
+    <span class="badge">OpenTelemetry</span>
+    <span class="badge">Prometheus</span>
+    <span class="badge">Grafana</span>
+    <span class="badge">xUnit + Testcontainers</span>
+  </div>
+</header>
+
+<section id="resumen">
+  <h2><span class="num">01</span>Resumen ejecutivo</h2>
+  <p class="lead">Qué es este repositorio, en seis puntos.</p>
+  <div class="card">
+    <ul class="tight">
+      <li><strong>Pipeline ELT</strong> que procesa la publicación diaria de <em>Información de deudores</em> del BCRA (dataset de muestra: ~5,9 GB, 34.385.567 líneas) y publica una versión agregada consultable mediante <strong>swap atómico</strong> de la versión activa.</li>
+      <li><strong>Tres microservicios</strong> .NET (minimal APIs) — <code>ingestion</code>, <code>query</code> y <code>notifier</code> — sobre PostgreSQL, con LocalStack (S3 + SQS) para el entorno local vía docker compose.</li>
+      <li><strong>Concurrencia resuelta 100 % en la base de datos</strong>: <code>FOR UPDATE SKIP LOCKED</code> + lease con heartbeat, índice único parcial para un solo import activo e <code>INSERT ... ON CONFLICT DO NOTHING</code> para idempotencia. Sin locks distribuidos ni afinidad de sesión.</li>
+      <li><strong>Resiliente por diseño</strong>: reanudación desde checkpoint sin duplicar filas, takeover de workers caídos al vencer el lease, y detección de fuente modificada (ETag/size).</li>
+      <li><strong>Observabilidad integrada</strong>: OpenTelemetry en los 3 servicios, <code>/metrics</code> en formato Prometheus y dashboard de Grafana aprovisionado, sin setup manual.</li>
+      <li><strong>Performance medida</strong> con el dataset real: end-to-end ≈ 486 s (~8 min), con ~78.400 líneas válidas/s en la fase de staging.</li>
+    </ul>
+    <div class="stats">
+      <div class="stat"><b>34.385.567</b><span>líneas del dataset de muestra (~5,9 GB)</span></div>
+      <div class="stat"><b>~78.400/s</b><span>líneas válidas COPY-eadas a staging</span></div>
+      <div class="stat"><b>~486 s</b><span>import end-to-end (~8 min)</span></div>
+      <div class="stat"><b>0</b><span>locks distribuidos · usos de SERIALIZABLE o LOCK TABLE</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="objetivo">
+  <h2><span class="num">02</span>Objetivo del challenge</h2>
+  <p class="lead">La necesidad que cubre el sistema.</p>
+  <div class="card">
+    <p>Construir un pipeline ELT de <strong>deudores financieros bancarios</strong> (publicación diaria del BCRA, sección Estadísticas → Información de deudores) que recorra <code>ingestion → agregación → swap → consulta</code>:</p>
+    <ul class="tight">
+      <li><strong>Ingerir un archivo diario grande</strong> (~5 GB por publicación) desde fuentes locales (<code>/data</code>) o S3 (<code>s3://bucket/key</code>), con uploads <strong>idempotentes</strong>.</li>
+      <li><strong>Tolerar fallos</strong>: un worker que cae o pierde la conexión a mitad del import no debe perder trabajo ni duplicar filas; otro worker retoma.</li>
+      <li><strong>Garantizar una única versión publicada</strong>: los consumidores consultan siempre una versión consistente de los agregados (nunca un estado mixto durante el reemplazo).</li>
+      <li><strong>Notificar la finalización</strong> del import (log estructurado + webhook opcional) y <strong>observar el proceso batch</strong>: throughput, duración por fase y estado de los jobs.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="solucion">
+  <h2><span class="num">03</span>Cómo se resolvió la necesidad</h2>
+  <p class="lead">Tres servicios con responsabilidad única, coordinados por PostgreSQL.</p>
+  <div class="card">
+    <div class="grid2">
+      <div class="svc">
+        <h4><span class="dot" style="background:#0f766e"></span>Bcra.Ingestion</h4>
+        <p>Acepta uploads idempotentes (<code>POST /imports</code>) y orquesta el import bajo lease (<code>ImportJobProcessor</code>): reclamo SKIP LOCKED → staging → agregación → índices pre-swap → swap atómico → DROP del import anterior. Migraciones DbUp.</p>
+        <p>Las fuentes se rutean por esquema (<code>RoutingFileSourceFactory</code>): <code>s3://bucket/key</code> → <code>S3FileSource</code> (rango <code>bytes=offset-</code> para reanudar, ETag real, buckets restringidos por allow-list), el resto → <code>LocalFileSource</code>. Al completar, publica <code>ImportCompletedEvent</code> en SQS de forma best-effort.</p>
+      </div>
+      <div class="svc">
+        <h4><span class="dot" style="background:#b45309"></span>Bcra.Query</h4>
+        <p>Lee la versión publicada resolviendo <code>active_import</code>, con conexiones de solo lectura y sin locks: las lecturas son MVCC y durante el swap ven la versión vieja o la nueva, nunca un estado mixto.</p>
+      </div>
+      <div class="svc">
+        <h4><span class="dot" style="background:#4338ca"></span>Bcra.Notifier</h4>
+        <p>Consume <code>import-completed</code> con long-poll (<code>SqsImportCompletedConsumer</code>): notifica vía log estructurado siempre y webhook HTTP si <code>Notifications:WebhookUrl</code> está configurado; borra el mensaje solo si la notificación fue OK (si falla, vuelve por visibilidad). El readiness incluye chequeo de SQS.</p>
+      </div>
+      <div class="svc">
+        <h4><span class="dot" style="background:#d97706"></span>El truco del ELT</h4>
+        <p>Cada lote confirma el COPY binario a staging + el checkpoint (<code>bytes_committed</code>, líneas, ETag/size, heartbeat) en <strong>una</strong> transacción READ COMMITTED: no existe lote en staging sin su checkpoint, por lo que reanudar no duplica filas. La agregación es SQL (<code>GROUP BY</code>) y la re-agregación es idempotente (DELETE previo por <code>import_id</code>).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="decisiones">
+  <h2><span class="num">04</span>Decisiones clave</h2>
+  <p class="lead">Resumen de los ADRs 005–009 (detalle completo en <code>docs/adr/</code>).</p>
+  <div class="adrs">
+    <div class="adr">
+      <span class="adr-id">ADR-005</span>
+      <h4>Reclamo con FOR UPDATE SKIP LOCKED + lease</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>Varios workers deben consumir jobs de <code>import_job</code> sin duplicar trabajo ni bloquearse; un worker puede caer a mitad de un import y su trabajo debe retomarse.</p>
+      <span class="lbl">Decisión</span>
+      <p>Reclamar en una transacción READ COMMITTED corta con <code>SELECT ... FOR UPDATE SKIP LOCKED</code> (candidatos: Pending, o Loading/Aggregating con heartbeat vencido) seguida de <code>UPDATE</code> que setea <code>lease_owner</code> y <code>heartbeat_at</code>. Renovación periódica solo por el dueño; takeover al vencer el lease; abort inmediato ante <code>DbException</code>.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Sin colas de mensajes extra ni locks distribuidos; los workers no se bloquean entre sí y la recuperación es automática. El trabajo no confirmado se re-ejecuta (la idempotencia por <code>(source, etag, periodo)</code> mitiga el re-procesamiento).</p>
+      <p class="more"><a href="adr/ADR-005-reclamo-skip-locked-lease.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr">
+      <span class="adr-id">ADR-006</span>
+      <h4>Un solo import activo con índice único parcial</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>El pipeline garantiza un único import activo (Loading/Aggregating) para que el swap de <code>active_import</code> y la publicación sean consistentes. Alternativas: advisory lock de sesión o constraint en base de datos.</p>
+      <span class="lbl">Decisión</span>
+      <p>Índice único parcial <code>uq_import_job_single_active ON import_job ((1)) WHERE status IN ('Loading','Aggregating')</code>. La activación que colisiona recibe 23505 y se trata como "no se pudo activar": el job queda Pending y el worker lo reintenta, sin fallar.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Sin afinidad de sesión (el lock de sesión de <code>pg_try_advisory_lock</code> es incompatible con PgBouncer en transaction pooling) y crash-safe: la verdad vive en la fila, no en memoria de sesión. La lógica de reintento debe tolerar 23505 como caso normal.</p>
+      <p class="more"><a href="adr/ADR-006-un-solo-import-activo-indice-parcial.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr">
+      <span class="adr-id">ADR-007</span>
+      <h4>READ COMMITTED en todas las escrituras</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>Se necesita exclusión mutua (reclamo, import activo, swap) pero con alta concurrencia de lecturas del query-service. SERIALIZABLE añade retrabajo por serialización y <code>LOCK TABLE</code> serializa de más.</p>
+      <span class="lbl">Decisión</span>
+      <p>Todas las transacciones de escritura se abren explícitamente con <code>IsolationLevel.ReadCommitted</code>. La exclusión mutua se logra con mecanismos puntuales: <code>FOR UPDATE SKIP LOCKED</code> (reclamo), <code>FOR UPDATE</code> en la fila única de <code>active_import</code> (swap) e índices únicos (idempotencia e import activo).</p>
+      <span class="lbl">Consecuencias</span>
+      <p>0 usos de SERIALIZABLE o <code>LOCK TABLE</code>; menos conflictos y retrabajos. Cada camino crítico tiene su mecanismo explícito, documentado en el README.</p>
+      <p class="more"><a href="adr/ADR-007-read-committed.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr">
+      <span class="adr-id">ADR-008</span>
+      <h4>Sin lock distribuido</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>Con múltiples instancias de workers/API se podría introducir un lock distribuido (Redis, ZooKeeper, advisory locks de sesión) para coordinar el reclamo y el import activo.</p>
+      <span class="lbl">Decisión</span>
+      <p>No introducir lock distribuido: toda la coordinación es de base de datos — <code>SKIP LOCKED</code> + lease con heartbeat (ADR-005), índice único parcial para el import activo (ADR-006) e <code>INSERT ... ON CONFLICT DO NOTHING</code> para idempotencia.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Menos piezas operativas (sin Redis/ZooKeeper, sin afinidad de sesión, compatible con connection pooling) y crash-safe por diseño. La base centraliza la contención; el lease tiene una ventana de vencimiento y los imports se serializan (aceptable: es un requerimiento).</p>
+      <p class="more"><a href="adr/ADR-008-sin-lock-distribuido.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr" style="grid-column:1/-1">
+      <span class="adr-id">ADR-009</span>
+      <h4>Observabilidad con OpenTelemetry</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>El pipeline es un proceso batch largo (staging → agregación → índices → swap) ejecutado por un worker en background: sin métricas no hay forma de saber throughput, duración por fase ni estado de los jobs sin consultar la base.</p>
+      <span class="lbl">Decisión</span>
+      <p>Registrar OpenTelemetry (SDK, runtime ASP.NET + HTTP) en los 3 servicios vía el helper compartido <code>AddObservability</code>, exportando métricas a formato Prometheus en <code>/metrics</code> — sin collector ni OTLP: Prometheus scrapea directamente. Métricas custom del pipeline en el meter <code>Bcra.ImportPipeline</code>. El correlation-id se propaga como tag <code>correlation_id</code> del trace y el <code>TraceId</code> se agrega al LogContext de Serilog. El compose agrega Prometheus (9090) y Grafana (3000) con datasource + dashboard aprovisionados.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Observabilidad de punta a punta con stack estándar y cero setup manual; el throughput queda medible, habilitando el tuning de batch/pool basado en datos. El dashboard es provisionado (no editable desde la UI sin desactivar el provisioning) y las métricas viven en memoria del proceso (la historia queda en Prometheus).</p>
+      <p class="more"><a href="adr/ADR-009-observabilidad-opentelemetry.md">Ver ADR completo →</a></p>
+    </div>
+  </div>
+  <p class="note">El repositorio además documenta las decisiones estructurales previas en <code>docs/adr/</code>: ADR-001 (PostgreSQL como persistencia), ADR-002 (ELT: staging then SQL), ADR-003 (situación de máximo literal) y ADR-004 (base compartida entre servicios).</p>
+</section>
+
+<section id="arquitectura">
+  <h2><span class="num">05</span>Arquitectura y composición del sistema</h2>
+  <p class="lead">Pipeline ELT con 3 microservicios (.NET, minimal APIs) y PostgreSQL.</p>
+  <div class="card">
+    <figure class="fig" style="margin:0">
+      <svg class="pipe" viewBox="0 0 1160 470" role="img" aria-labelledby="pipeTitle">
+        <title id="pipeTitle">Diagrama del pipeline: fuentes (/data o s3://) alimentan el upload POST /imports; el servicio de ingestion ejecuta staging, agregación y swap sobre PostgreSQL; query lee la versión activa con MVCC; al completar, ingestion publica ImportCompletedEvent en la cola SQS import-completed y notifier lo consume; Prometheus y Grafana observan los tres servicios.</title>
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748b"/></marker>
+          <marker id="arwT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0f766e"/></marker>
+          <marker id="arwG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker>
+          <filter id="ds" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#16233f" flood-opacity="0.10"/></filter>
+        </defs>
+        <g filter="url(#ds)">
+          <rect class="n" x="16" y="36" width="152" height="104" rx="12"/>
+          <text class="t" x="92" y="66">Fuentes</text>
+          <text class="s" x="92" y="90">/data (local)</text>
+          <text class="s" x="92" y="108">s3://bucket/key</text>
+
+          <rect class="n" x="204" y="36" width="156" height="104" rx="12"/>
+          <text class="t" x="282" y="66">Upload</text>
+          <text class="s" x="282" y="90">POST /imports</text>
+          <text class="s" x="282" y="108">idempotente (ON CONFLICT)</text>
+
+          <rect class="n" x="404" y="24" width="310" height="152" rx="12"/>
+          <text class="t tt" x="559" y="54">Ingestion service</text>
+          <text class="s" x="559" y="76">worker bajo lease (SKIP LOCKED)</text>
+          <rect class="pill" x="424" y="124" width="78" height="28" rx="14"/><text class="pt" x="463" y="142">staging</text>
+          <rect class="pill" x="514" y="124" width="92" height="28" rx="14"/><text class="pt" x="560" y="142">agregación</text>
+          <rect class="pill" x="618" y="124" width="58" height="28" rx="14"/><text class="pt" x="647" y="142">swap</text>
+          <path class="flow" d="M502 138 H510" marker-end="url(#arw)"/>
+          <path class="flow" d="M606 138 H614" marker-end="url(#arw)"/>
+
+          <rect class="n" x="758" y="36" width="196" height="104" rx="12"/>
+          <text class="t ta" x="856" y="64">PostgreSQL</text>
+          <text class="s" x="856" y="86">staging · agregados</text>
+          <text class="s" x="856" y="104">active_import (fila única)</text>
+          <text class="s" x="856" y="122">post-swap: DROP del anterior</text>
+
+          <rect class="n" x="998" y="36" width="150" height="104" rx="12"/>
+          <text class="t tt" x="1073" y="64">Query service</text>
+          <text class="s" x="1073" y="86">rol readonly</text>
+          <text class="s" x="1073" y="104">MVCC, sin locks</text>
+
+          <rect class="n" x="470" y="310" width="190" height="90" rx="12"/>
+          <text class="t ta" x="565" y="340">SQS import-completed</text>
+          <text class="s" x="565" y="362">LocalStack (:4566)</text>
+          <text class="s" x="565" y="380">evento al completar</text>
+
+          <rect class="n" x="712" y="310" width="190" height="90" rx="12"/>
+          <text class="t tt" x="807" y="340">Notifier</text>
+          <text class="s" x="807" y="362">log estructurado</text>
+          <text class="s" x="807" y="380">webhook opcional</text>
+
+          <rect x="16" y="310" width="380" height="90" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6 5"/>
+          <text class="t" x="206" y="338" style="fill:#475569">Observabilidad</text>
+          <text class="s" x="206" y="360">Prometheus :9090 — scrapea /metrics de los 3 servicios</text>
+          <text class="s" x="206" y="378">Grafana :3000 — datasource + dashboard provisionados</text>
+        </g>
+        <path class="flow" d="M168 88 H198" marker-end="url(#arw)"/>
+        <path class="flow" d="M360 88 H398" marker-end="url(#arw)"/>
+        <path class="flow" d="M714 88 H752" marker-end="url(#arw)"/>
+        <path class="flow" d="M954 88 H992" marker-end="url(#arw)"/>
+        <path class="evt" d="M590 176 V304" marker-end="url(#arwT)"/>
+        <text class="lblE" x="600" y="244">ImportCompletedEvent</text>
+        <text class="lblE" x="600" y="260" style="font-weight:400;fill:#5b6472">publish best-effort</text>
+        <path class="flow" d="M660 355 H706" marker-end="url(#arw)"/>
+        <text class="s" x="683" y="346">consume</text>
+        <path class="obs" d="M206 310 V252 H559 V182" marker-end="url(#arwG)"/>
+        <path class="flow" d="M16 446 H56"/>
+        <text class="lg" x="64" y="450">flujo de datos</text>
+        <path class="obs" d="M190 446 H230"/>
+        <text class="lg" x="238" y="450">observabilidad (scrape)</text>
+        <path class="evt" d="M430 446 H470"/>
+        <text class="lg" x="478" y="450">evento import-completed</text>
+      </svg>
+      <figcaption>Pipeline ELT: upload idempotente → ingestion (staging → agregación → swap) sobre PostgreSQL → consulta MVCC; notificación vía SQS → notifier; observabilidad con Prometheus + Grafana.</figcaption>
+    </figure>
+
+    <h3>Flujo de un import (concurrencia)</h3>
+    <ol class="flow">
+      <li><strong>Upload idempotente</strong>: <code>POST /imports</code> hace <code>INSERT ... ON CONFLICT (source, etag, periodo) DO NOTHING</code>; duplicado → devuelve el job existente con <code>alreadyExisted=true</code> (201 nuevo / 200 existente).</li>
+      <li><strong>Reclamo</strong>: <code>ClaimNextAsync</code> selecciona el job más antiguo elegible (Pending, o Loading/Aggregating con lease vencido) con <code>FOR UPDATE SKIP LOCKED</code> y lo reclama (<code>lease_owner</code>, <code>heartbeat_at</code>). Si la activación choca con el índice único parcial de import activo, el job queda Pending y se reintenta.</li>
+      <li><strong>Ejecución</strong>: el procesador crea la partición de staging, agrega, renueva lease, crea índices (<code>CREATE INDEX</code>, antes del swap), swapea <code>active_import</code> (transacción corta) y marca Completed. Cada lote confirma COPY + checkpoint en UNA transacción READ COMMITTED; la re-agregación es idempotente y la pérdida de conexión aborta sin confirmar nada. Si la fuente cambió (ETag/size), el job termina <code>Failed</code> en vez de reintentar para siempre.</li>
+      <li><strong>Notificación</strong>: post-Completed se publica <code>ImportCompletedEvent</code> (JobId, líneas, agregados, duración) en la cola SQS <code>import-completed</code> (best-effort). Notifier lo consume con long-poll (20 s), notifica y borra el mensaje solo si la notificación fue OK; mensajes malformados se descartan.</li>
+      <li><strong>Limpieza</strong>: post-swap, <code>DROP</code> de la partición de staging e índices del import anterior (nunca del activo, sin <code>DELETE</code> masivo).</li>
+    </ol>
+  </div>
+</section>
+
+<section id="concurrencia">
+  <h2><span class="num">06</span>Concurrencia y bloqueos</h2>
+  <p class="lead">Toda la estrategia vive en PostgreSQL, sin locks distribuidos ni afinidad de sesión.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:32%">Situación</th><th>Mecanismo</th></tr></thead>
+      <tbody>
+        <tr><td>Crear un import (upload)</td><td><code>INSERT ... ON CONFLICT (source, etag, periodo) DO NOTHING</code> sobre índice único <code>uq_import_job_source_etag_periodo</code>; si ya existe, se devuelve el job existente (nunca "buscar y después insertar").</td></tr>
+        <tr><td>Worker reclama un job</td><td><code>SELECT ... FOR UPDATE SKIP LOCKED</code> + <code>UPDATE</code> en una transacción READ COMMITTED corta: Pending → Loading (o takeover de Loading/Aggregating con lease vencido), seteando <code>lease_owner</code> y <code>heartbeat_at</code>.</td></tr>
+        <tr><td>Un solo import activo</td><td>Índice único parcial <code>uq_import_job_single_active</code> sobre estados Loading/Aggregating. Colisión (23505) → el job queda Pending y se reintenta, sin fallar.</td></tr>
+        <tr><td>Worker caído / conexión perdida</td><td>Sin heartbeat, el lease vence (<code>heartbeat_at &lt;= cutoff</code>); otro worker lo reclama vía SKIP LOCKED y retoma desde <code>bytes_committed</code>. El worker que pierde la conexión aborta sin confirmar nada más.</td></tr>
+        <tr><td>Commit de lote a staging</td><td>El COPY binario del lote y el UPDATE del checkpoint (<code>bytes_committed</code>, líneas, etag/size, heartbeat) se confirman en UNA transacción READ COMMITTED: no existe lote en staging sin su checkpoint (reanudar no duplica filas).</td></tr>
+        <tr><td>Fuente modificada al reanudar</td><td>Si al reabrir la fuente su ETag o size no coinciden con el job, termina <code>Failed</code> (no retry infinito con lease vencido).</td></tr>
+        <tr><td>Renovar el lease</td><td><code>UPDATE import_job SET heartbeat_at = now WHERE id = @id AND lease_owner = @owner AND status IN ('Loading','Aggregating')</code>.</td></tr>
+        <tr><td>Swap de versión publicada</td><td><code>UPDATE</code> de la fila única de <code>active_import</code> en transacción corta con <code>FOR UPDATE</code>; las lecturas del query-service son MVCC (ven la versión vieja o la nueva, nunca mixta).</td></tr>
+        <tr><td>Índices del import nuevo</td><td><code>CREATE INDEX</code> (no CONCURRENTLY) sobre la partición de staging y los agregados del import, ANTES del swap.</td></tr>
+        <tr><td>Limpieza del import anterior</td><td>Después del swap: <code>DROP TABLE</code> de la partición de staging y <code>DROP INDEX</code> de los índices parciales del import anterior. Nunca del activo; sin <code>DELETE</code> masivo.</td></tr>
+        <tr><td>Aislamiento</td><td>READ COMMITTED explícito en todas las transacciones de escritura. Cero usos de SERIALIZABLE o <code>LOCK TABLE</code>.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Detalle de decisiones: <a href="adr/ADR-005-reclamo-skip-locked-lease.md">ADR-005</a>, <a href="adr/ADR-006-un-solo-import-activo-indice-parcial.md">ADR-006</a>, <a href="adr/ADR-007-read-committed.md">ADR-007</a>, <a href="adr/ADR-008-sin-lock-distribuido.md">ADR-008</a>.</p>
+  </div>
+</section>
+
+<section id="uso">
+  <h2><span class="num">07</span>Cómo usarlo</h2>
+  <p class="lead">Build, tests, stack completo y observabilidad.</p>
+  <div class="card">
+    <h3>Build y tests</h3>
+    <div class="pre"><pre><code>dotnet build Bcra.Microservices.sln
+dotnet test tests/unit/Bcra.Ingestion.Domain.Tests
+dotnet test tests/unit/Bcra.Ingestion.Application.Tests
+dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests
+dotnet test tests/unit/Bcra.Notifier.Application.Tests
+dotnet test tests/integration/Bcra.Ingestion.IntegrationTests   <span class="c"># requiere Docker (Testcontainers)</span></code></pre></div>
+
+    <h3>Stack completo (compose)</h3>
+    <div class="pre"><pre><code>docker compose up -d --build                                    <span class="c"># stack completo con LocalStack + Prometheus + Grafana</span>
+docker compose exec localstack awslocal sqs list-queues         <span class="c"># cola import-completed</span>
+docker compose exec localstack awslocal s3 ls                   <span class="c"># bucket bcra-local</span>
+curl http://localhost:18082/health/ready                        <span class="c"># notifier (incluye chequeo SQS)</span>
+curl http://localhost:18080/metrics                             <span class="c"># métricas ingestion (formato Prometheus)</span>
+curl http://localhost:18081/metrics                             <span class="c"># métricas query</span>
+curl http://localhost:18082/metrics                             <span class="c"># métricas notifier</span>
+curl http://localhost:9090/api/v1/targets                       <span class="c"># 3 targets en "up"</span></code></pre></div>
+    <p class="note">Al levantar el compose, <code>localstack/init/01-init.sh</code> crea el bucket <code>S3_BUCKET</code> (por defecto <code>bcra-local</code>) y la cola <code>import-completed</code> (idempotente). Ingestion publica ahí el <code>ImportCompletedEvent</code> al completar un import y notifier lo consume; si <code>WEBHOOK_URL</code> se configura, notifier además hace HTTP POST del evento.</p>
+
+    <h3>Observabilidad</h3>
+    <table>
+      <thead><tr><th>Pieza</th><th>URL</th><th>Qué mirar</th></tr></thead>
+      <tbody>
+        <tr><td>Prometheus</td><td><code>http://localhost:9090</code></td><td><code>/api/v1/targets</code> con <code>ingestion</code>, <code>query</code> y <code>notifier</code> en <code>up</code></td></tr>
+        <tr><td>Grafana</td><td><code>http://localhost:3000</code></td><td>Dashboard "BCRA — Pipeline de import de deudores" (carpeta BCRA; viewer anónimo, o admin/admin)</td></tr>
+        <tr><td>Métricas crudas</td><td><code>http://localhost:18080/metrics</code></td><td>Exposición Prometheus de cada servicio</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin-top:1.4rem">Métricas custom del pipeline <span style="font-weight:400;color:var(--muted);font-size:.82rem">(meter <code>Bcra.ImportPipeline</code>, prefijo <code>bcra_import_*</code>, solo ingestion)</span></h4>
+    <table>
+      <thead><tr><th>Métrica</th><th>Tipo</th><th>Uso</th></tr></thead>
+      <tbody>
+        <tr><td><code>bcra_import_lines_copied_total</code> / <code>bcra_import_lines_rejected_total</code></td><td>counter</td><td>Líneas COPY-eadas a staging / rechazadas por el parser. Throughput: <code>rate(bcra_import_lines_copied_total[1m])</code></td></tr>
+        <tr><td><code>bcra_import_batches_committed_total</code></td><td>counter</td><td>Lotes confirmados (COPY + checkpoint atómicos)</td></tr>
+        <tr><td><code>bcra_import_phase_duration_seconds</code></td><td>histogram (label <code>phase</code>)</td><td>Duración por fase: <code>staging</code>, <code>aggregation</code>, <code>indexes</code>, <code>swap</code>, <code>total</code></td></tr>
+        <tr><td><code>bcra_import_jobs_total</code></td><td>counter (label <code>outcome</code>)</td><td>Imports finalizados <code>completed</code> / <code>failed</code></td></tr>
+        <tr><td><code>bcra_import_jobs_by_status</code></td><td>gauge (label <code>status</code>)</td><td>Jobs por estado actual (Pending/Loading/Aggregating/Completed/Failed), refrescado por el worker</td></tr>
+      </tbody>
+    </table>
+    <p>El dashboard de Grafana muestra: import en curso (Loading/Aggregating), líneas/s (válidas y rechazadas), duración p95 por fase, jobs por estado, resultado de jobs + lotes confirmados/s, requests HTTP del query-service por ruta y el estado de los 3 targets. El correlation-id (<code>X-Correlation-Id</code>) viaja como tag <code>correlation_id</code> de cada trace, y todo log de request incluye <code>TraceId</code> (W3C) además de <code>CorrelationId</code>, permitiendo cruzar logs ↔ traces.</p>
+  </div>
+</section>
+
+<section id="complementos">
+  <h2><span class="num">08</span>Datos complementarios</h2>
+  <p class="lead">Stack, estructura del repo, tests, fuentes de datos y configuración.</p>
+  <div class="card">
+    <h3>Stack</h3>
+    <div class="badges" style="color:#43506a">
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">.NET 10 · C#</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">ASP.NET Core Minimal APIs</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">PostgreSQL 16.4</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Npgsql · Dapper · DbUp</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Serilog</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">AWS SDK (S3 + SQS)</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">LocalStack 3.8.1</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">OpenTelemetry</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Prometheus v3.4.2</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Grafana 12.0.2</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">Docker Compose</span>
+      <span class="badge" style="color:#2c354a;border-color:#cdd6e4;background:#f6f8fc">xUnit + Testcontainers</span>
+    </div>
+
+    <h3>Estructura del repositorio</h3>
+    <div class="pre"><pre class="tree"><code>Wayni Challenge/
+├── Bcra.Microservices.sln
+├── docker-compose.yml          <span class="c"># postgres, localstack, 3 apis, prometheus, grafana</span>
+├── .env.example                <span class="c"># configuración del entorno local</span>
+├── src/
+│   ├── services/
+│   │   ├── ingestion/          <span class="c"># Bcra.Ingestion.{Api,Application,Domain,Infrastructure}</span>
+│   │   ├── query/              <span class="c"># Bcra.Query.{Api,Application,Domain,Infrastructure}</span>
+│   │   └── notifier/           <span class="c"># Bcra.Notifier.{Api,Application,Domain,Infrastructure}</span>
+│   └── shared/                 <span class="c"># Bcra.Shared.{Domain,Infrastructure} (helper AddObservability)</span>
+├── tests/
+│   ├── unit/                   <span class="c"># 4 proyectos de tests unitarios</span>
+│   └── integration/            <span class="c"># Bcra.Ingestion.IntegrationTests (Testcontainers)</span>
+├── docs/
+│   ├── adr/                    <span class="c"># ADR-001 .. ADR-009</span>
+│   └── overview.html           <span class="c"># este documento</span>
+├── localstack/init/            <span class="c"># 01-init.sh: bucket + cola (idempotente)</span>
+├── observability/              <span class="c"># prometheus.yml + provisioning de Grafana</span>
+└── samples/                    <span class="c"># datos del BCRA (ignorada en git, ~5 GB)</span></code></pre></div>
+
+    <h3>Tests</h3>
+    <ul class="tight">
+      <li><code>tests/unit/Bcra.Ingestion.Domain.Tests</code> — ciclo de vida del job, reclamo y decisión de lease vencido con reloj inyectable (<code>TimeProvider</code>).</li>
+      <li><code>tests/unit/Bcra.Ingestion.Application.Tests</code> — checkpoint por lote y offset de reanudación de <code>StagingCopyLoader</code> (commit atómico lote+checkpoint, fuente modificada).</li>
+      <li><code>tests/unit/Bcra.Ingestion.Infrastructure.Tests</code> — ruteo <code>s3://</code> con allow-list de buckets, offset/rango y ETag de <code>S3FileSource</code>, y publicación SQS del evento.</li>
+      <li><code>tests/unit/Bcra.Notifier.Application.Tests</code> — manejo del mensaje (parseo, delete condicional, requeue por fallo) y <code>WebhookNotifier</code>.</li>
+      <li><code>tests/integration/Bcra.Ingestion.IntegrationTests</code> — Testcontainers + PostgreSQL real: (a) dos workers, un ganador; (b) uploads simultáneos → un solo job y una sola ejecución; (c) segundo import queda Pending mientras hay uno activo; (d) lecturas concurrentes al swap ven versión vieja o nueva, nunca mixta; (e) import completado publica <code>ImportCompletedEvent</code> con agregados y el fallo del publish no falla el import; (f) reanudación: takeover de Loading tras lease vencido completa sin duplicados, takeover de Aggregating re-agrega idempotente, fuente modificada → Failed.</li>
+    </ul>
+
+    <h3>Fuentes de datos</h3>
+    <p>El ingestion-service lee desde <code>DATA_DIR</code> (por defecto <code>./samples</code>), definido en <code>.env</code>. Las fuentes se rutean por esquema: <code>s3://bucket/key</code> → S3 (LocalStack o AWS real, buckets restringidos a la allow-list <code>Ingestion:AllowedS3Buckets</code>), el resto → archivos locales bajo la allow-list de directorios (<code>Ingestion:AllowedSourceDirs</code>, montado como <code>/data</code> en el compose).</p>
+    <p>Para correr localmente, descargar los archivos de texto de "Información de deudores" publicados diariamente por el BCRA en <strong>www.bcra.gob.ar</strong> (sección Estadísticas → Información de deudores) y ubicarlos en <code>samples/</code>:</p>
+    <div class="pre"><pre><code>samples/
+├── deudores.txt   <span class="c"># deuda por CUIT y entidad (~5 GB, publicación diaria)</span>
+├── Maeent.txt     <span class="c"># maestro de entidades financieras</span>
+└── Nomdeu.txt     <span class="c"># nomenclador de deudores</span></code></pre></div>
+    <p style="font-size:.85rem;color:var(--muted)">La carpeta <code>samples/</code> está ignorada en git (el archivo principal pesa ~5 GB).</p>
+
+    <h3>Variables de entorno <span style="font-weight:400;color:var(--muted);font-size:.82rem">(defaults de <code>.env.example</code>)</span></h3>
+    <table>
+      <thead><tr><th style="width:34%">Variable</th><th style="width:30%">Default</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">PostgreSQL</td></tr>
+        <tr><td><code>POSTGRES_USER</code> / <code>POSTGRES_PASSWORD</code> / <code>POSTGRES_DB</code></td><td><code>bcra</code> / <code>local-dev-password</code> / <code>bcra</code></td><td>Credenciales y base del compose (la contraseña es requerida para iniciar).</td></tr>
+        <tr><td><code>POSTGRES_PORT</code></td><td><code>5544</code></td><td>Puerto publicado de PostgreSQL.</td></tr>
+        <tr><td><code>POSTGRES_READONLY_PASSWORD</code></td><td><code>local-dev-readonly</code></td><td>Contraseña del rol readonly que usa el query-service.</td></tr>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">Servicios (puertos host)</td></tr>
+        <tr><td><code>INGESTION_API_PORT</code> / <code>QUERY_API_PORT</code> / <code>NOTIFIER_API_PORT</code></td><td><code>18080</code> / <code>18081</code> / <code>18082</code></td><td>Puertos publicados de las 3 APIs.</td></tr>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">Observabilidad</td></tr>
+        <tr><td><code>PROMETHEUS_PORT</code> / <code>GRAFANA_PORT</code></td><td><code>9090</code> / <code>3000</code></td><td>Puertos de Prometheus y Grafana (datasource + dashboard aprovisionados).</td></tr>
+        <tr><td><code>GRAFANA_ADMIN_USER</code> / <code>GRAFANA_ADMIN_PASSWORD</code></td><td><code>admin</code> / <code>admin</code></td><td>Login de admin; también hay viewer anónimo sin login.</td></tr>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">Tuning del import <span style="font-weight:400">(defaults medidos con el dataset de muestra; ver README "Performance")</span></td></tr>
+        <tr><td><code>INGESTION_BATCH_SIZE</code></td><td><code>200000</code></td><td>Líneas por lote de COPY (97 lotes de 200k: tasa estable, sin presión de memoria).</td></tr>
+        <tr><td><code>DATABASE_MAXPOOLSIZE</code></td><td><code>50</code></td><td>MaxPoolSize del connection string de ingestion.</td></tr>
+        <tr><td><code>DATABASE_MAXAUTOPREPARE</code></td><td><code>16</code></td><td>Max Auto Prepare de Npgsql en el connection string de ingestion.</td></tr>
+        <tr><td><code>QUERY_TOP_MAX</code></td><td><code>100</code></td><td>Tope máximo de resultados del query-service.</td></tr>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">AWS / LocalStack</td></tr>
+        <tr><td><code>LOCALSTACK_PORT</code> / <code>LOCALSTACK_DEBUG</code></td><td><code>4566</code> / <code>0</code></td><td>Endpoint local de S3 + SQS.</td></tr>
+        <tr><td><code>AWS_REGION</code> / <code>AWS_ACCESS_KEY_ID</code> / <code>AWS_SECRET_ACCESS_KEY</code></td><td><code>us-east-1</code> / <code>test</code> / <code>test</code></td><td>Credenciales locales para LocalStack.</td></tr>
+        <tr><td><code>S3_BUCKET</code></td><td><code>bcra-local</code></td><td>Bucket que crea <code>init/01-init.sh</code> al iniciar; ingestion solo puede leer buckets allow-listed.</td></tr>
+        <tr><td><code>SQS_IMPORT_COMPLETED_URL</code></td><td><code>http://localstack:4566/000000000000/import-completed</code></td><td>Cola donde ingestion publica el <code>ImportCompletedEvent</code> y notifier consume. Desde los contenedores el host es <code>localstack</code> (no localhost).</td></tr>
+        <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">Notificaciones y app</td></tr>
+        <tr><td><code>WEBHOOK_URL</code></td><td><em>(vacío)</em></td><td>Webhook opcional (HTTP POST del evento); vacío = solo log estructurado.</td></tr>
+        <tr><td><code>UPLOAD_API_KEY</code></td><td><code>local-dev-upload-key</code></td><td>API key del endpoint de upload.</td></tr>
+        <tr><td><code>DATA_DIR</code></td><td><code>./samples</code></td><td>Directorio de datos montado como <code>/data</code> (readonly) en ingestion.</td></tr>
+        <tr><td><code>ASPNETCORE_ENVIRONMENT</code></td><td><code>Development</code></td><td>Ambiente de las APIs.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Performance medida <span style="font-weight:400;color:var(--muted);font-size:.82rem">(dataset real de muestra <code>samples/deudores.txt</code>: ~5,9 GB, 34.385.567 líneas — 19.247.633 válidas + 15.137.934 rechazadas por el parser — sobre Docker Desktop, Postgres 16.4 compartiendo CPU)</span></h3>
+    <table>
+      <thead><tr><th>Fase</th><th>Duración</th><th>Nota</th></tr></thead>
+      <tbody>
+        <tr><td>Staging (COPY por lotes + checkpoint)</td><td>245,5 s</td><td><strong>~78.400 líneas válidas/s</strong> (~140.000 líneas totales/s), 97 lotes</td></tr>
+        <tr><td>Agregación SQL (GROUP BY)</td><td>132,5 s</td><td>CPU-bound en Postgres</td></tr>
+        <tr><td>Índices pre-swap</td><td>97,5 s</td><td><code>CREATE INDEX</code> sobre staging + agregados parciales</td></tr>
+        <tr><td>Swap de <code>active_import</code></td><td>0,05 s</td><td>Transacción corta con <code>FOR UPDATE</code></td></tr>
+        <tr><td><strong>End-to-end</strong></td><td><strong>~486 s (~8 min)</strong></td><td>Desde claim hasta Completed</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.88rem;color:#43506a"><strong>Tuning aplicado, justificado por la medición:</strong></p>
+    <ul class="tight" style="font-size:.88rem;color:#43506a">
+      <li><code>CommandTimeout=0</code> en los comandos pesados (<code>AggregateImportAsync</code>, <code>CreateImportIndexesAsync</code>, <code>DropImportStorageAsync</code>): el default de Npgsql (30 s) es menor que la agregación medida (132 s) — sin esto, el import del dataset real entraba en loop de takeover (timeout → <code>DbException</code> → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.</li>
+      <li>Batch size 200k y pool 50 se mantienen: la medición no muestra cuello de botella del lado .NET (el limiter es Postgres en la agregación).</li>
+    </ul>
+  </div>
+</section>
+
+<footer>Generado a partir de <code>README.md</code>, <code>ARCHITECTURE.md</code> y <code>docs/adr/</code> · Wayni Challenge — Pipeline ELT de deudores bancarios (BCRA)</footer>
+</div>
+</main>
+
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('.nav a'));
+  var map={};
+  links.forEach(function(a){map[a.getAttribute('href').slice(1)]=a;});
+  var obs=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(a){a.classList.remove('active');});
+        var a=map[e.target.id];
+        if(a)a.classList.add('active');
+      }
+    });
+  },{rootMargin:'-20% 0px -70% 0px'});
+  Object.keys(map).forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)obs.observe(el);
+  });
+})();
+</script>
+</body>
+</html>
