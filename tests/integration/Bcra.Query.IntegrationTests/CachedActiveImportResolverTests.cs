@@ -48,7 +48,27 @@ public sealed class CachedActiveImportResolverTests
         inner.Calls.Should().Be(2, "con TTL 0 cada request consulta la BD (comportamiento actual)");
     }
 
-    private static CachedActiveImportResolver CreateResolver(CountingResolver inner, int ttlSeconds) =>
+    [Fact]
+    public async Task ConcurrentResolves_WhileInnerInFlight_ProduceSingleInnerQueryAndSameImportId()
+    {
+        var importId = Guid.NewGuid();
+        var inner = new GatedResolver(importId);
+        var sut = CreateResolver(inner, ttlSeconds: 5);
+        using var _ = sut;
+
+        var resolves = Enumerable.Range(0, 8)
+            .Select(_ => sut.ResolveActiveImportIdAsync(CancellationToken.None))
+            .ToArray();
+
+        await inner.Started;
+        inner.Complete();
+        var results = await Task.WhenAll(resolves);
+
+        results.Should().OnlyContain(id => id == importId);
+        inner.Calls.Should().Be(1, "resoluciones concurrentes durante un miss compartido deben deduplicar el lookup a active_import (anti-stampede)");
+    }
+
+    private static CachedActiveImportResolver CreateResolver(IActiveImportResolver inner, int ttlSeconds) =>
         new(inner, new MemoryCache(new MemoryCacheOptions()), Options.Create(new ActiveImportCacheOptions { ActiveImportCacheTtlSeconds = ttlSeconds }));
 
     private sealed class CountingResolver(Guid? result) : IActiveImportResolver
@@ -59,6 +79,26 @@ public sealed class CachedActiveImportResolverTests
         {
             Calls++;
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class GatedResolver(Guid? result) : IActiveImportResolver
+    {
+        private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Calls { get; private set; }
+
+        public Task Started => started.Task;
+
+        public void Complete() => completion.TrySetResult();
+
+        public async Task<Guid?> ResolveActiveImportIdAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            started.TrySetResult();
+            await completion.Task;
+            return result;
         }
     }
 }

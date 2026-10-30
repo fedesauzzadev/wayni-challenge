@@ -43,19 +43,20 @@ public sealed class SqsImportCompletedConsumerTests
                 return Task.FromResult(new ReceiveMessageResponse { Messages = messages });
             });
 
-        var healthyDeleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        sqs.DeleteMessageAsync(
-                Arg.Is<DeleteMessageRequest>(request => request.ReceiptHandle == healthyMessage.ReceiptHandle),
-                Arg.Any<CancellationToken>())
-            .Returns(_ =>
+        var healthyBatchDeleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        sqs.DeleteMessageBatchAsync(Arg.Any<DeleteMessageBatchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
             {
-                healthyDeleted.TrySetResult();
-                return Task.FromResult(new DeleteMessageResponse());
+                var request = callInfo.Arg<DeleteMessageBatchRequest>();
+                if (request.Entries.Any(entry => entry.ReceiptHandle == healthyMessage.ReceiptHandle))
+                    healthyBatchDeleted.TrySetResult();
+                return Task.FromResult(new DeleteMessageBatchResponse
+                {
+                    Successful = request.Entries
+                        .Select(entry => new DeleteMessageBatchResultEntry { Id = entry.Id })
+                        .ToList()
+                });
             });
-        sqs.DeleteMessageAsync(
-                Arg.Is<DeleteMessageRequest>(request => request.ReceiptHandle == failingMessage.ReceiptHandle),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new DeleteMessageResponse()));
 
         var consumer = new SqsImportCompletedConsumer(
             sqs,
@@ -71,16 +72,18 @@ public sealed class SqsImportCompletedConsumerTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await consumer.StartAsync(cts.Token);
-        var finished = await Task.WhenAny(healthyDeleted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        var finished = await Task.WhenAny(healthyBatchDeleted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
         await consumer.StopAsync(CancellationToken.None);
 
-        finished.Should().BeSameAs(healthyDeleted.Task,
+        finished.Should().BeSameAs(healthyBatchDeleted.Task,
             "una excepción no anticipada en un mensaje no debe retrasar el resto del lote");
-        await sqs.Received(1).DeleteMessageAsync(
-            Arg.Is<DeleteMessageRequest>(request => request.ReceiptHandle == healthyMessage.ReceiptHandle),
+        await sqs.Received(1).DeleteMessageBatchAsync(
+            Arg.Is<DeleteMessageBatchRequest>(request =>
+                request.Entries.Select(entry => entry.ReceiptHandle).SequenceEqual(new[] { healthyMessage.ReceiptHandle })),
             Arg.Any<CancellationToken>());
-        await sqs.DidNotReceive().DeleteMessageAsync(
-            Arg.Is<DeleteMessageRequest>(request => request.ReceiptHandle == failingMessage.ReceiptHandle),
+        await sqs.DidNotReceive().DeleteMessageBatchAsync(
+            Arg.Is<DeleteMessageBatchRequest>(request =>
+                request.Entries.Any(entry => entry.ReceiptHandle == failingMessage.ReceiptHandle)),
             Arg.Any<CancellationToken>());
     }
 

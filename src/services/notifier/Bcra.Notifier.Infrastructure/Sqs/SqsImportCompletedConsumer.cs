@@ -16,6 +16,9 @@ public sealed partial class SqsImportCompletedConsumer(
 {
     /// <summary>Máximo de segundos que SQS acepta en WaitTimeSeconds (long polling).</summary>
     private const int MaxSqsWaitTimeSeconds = 20;
+    /// <summary>Máximo de entradas que SQS acepta por DeleteMessageBatch.</summary>
+    private const int MaxSqsBatchDeleteEntries = 10;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var queueUrl = options.Value.ImportCompletedQueueUrl;
@@ -38,8 +41,19 @@ public sealed partial class SqsImportCompletedConsumer(
                     },
                     stoppingToken);
 
-                foreach (var message in response.Messages ?? [])
-                    await ProcessMessageAsync(queueUrl, message, stoppingToken);
+                var messages = response.Messages ?? [];
+                if (messages.Count == 0)
+                    continue;
+
+                var processed = await Task.WhenAll(messages.Select(message => ProcessMessageAsync(message, stoppingToken)));
+                var messagesToDelete = messages
+                    .Zip(processed, (message, delete) => (message, delete))
+                    .Where(pair => pair.delete)
+                    .Select(pair => pair.message)
+                    .ToArray();
+
+                if (messagesToDelete.Length > 0)
+                    await DeleteMessagesAsync(queueUrl, messagesToDelete, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -53,7 +67,7 @@ public sealed partial class SqsImportCompletedConsumer(
         }
     }
 
-    private async Task ProcessMessageAsync(string queueUrl, Message message, CancellationToken cancellationToken)
+    private async Task<bool> ProcessMessageAsync(Message message, CancellationToken cancellationToken)
     {
         MessageProcessingOutcome outcome;
         try
@@ -67,24 +81,42 @@ public sealed partial class SqsImportCompletedConsumer(
         catch (Exception ex)
         {
             LogMessageFailedUnexpectedly(message.MessageId, ex);
-            return;
+            return false;
         }
 
         if (outcome == MessageProcessingOutcome.Abandon)
         {
             LogMessageAbandoned(message.MessageId);
-            return;
+            return false;
         }
 
-        try
+        return true;
+    }
+
+    private async Task DeleteMessagesAsync(string queueUrl, IReadOnlyCollection<Message> messages, CancellationToken cancellationToken)
+    {
+        foreach (var chunk in messages.Chunk(MaxSqsBatchDeleteEntries))
         {
-            await sqs.DeleteMessageAsync(
-                new DeleteMessageRequest { QueueUrl = queueUrl, ReceiptHandle = message.ReceiptHandle },
-                cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            LogDeleteFailed(message.MessageId, ex);
+            try
+            {
+                var response = await sqs.DeleteMessageBatchAsync(
+                    new DeleteMessageBatchRequest
+                    {
+                        QueueUrl = queueUrl,
+                        Entries = chunk
+                            .Select(message => new DeleteMessageBatchRequestEntry { Id = message.MessageId, ReceiptHandle = message.ReceiptHandle })
+                            .ToList()
+                    },
+                    cancellationToken);
+
+                foreach (var failure in response.Failed)
+                    LogDeleteFailedEntry(failure.Id, failure.Code, failure.Message);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                foreach (var message in chunk)
+                    LogDeleteFailed(message.MessageId, ex);
+            }
         }
     }
 
@@ -113,4 +145,7 @@ public sealed partial class SqsImportCompletedConsumer(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete message {MessageId} from SQS; it may be notified again")]
     private partial void LogDeleteFailed(string messageId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete message {MessageId} from SQS (code {Code}: {Reason}); it may be notified again")]
+    private partial void LogDeleteFailedEntry(string messageId, string? code, string? reason);
 }

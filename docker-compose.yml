@@ -77,7 +77,7 @@ services:
     container_name: bcra-query-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=bcra_readonly;Password=${POSTGRES_READONLY_PASSWORD}"
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=bcra_readonly;Password=${POSTGRES_READONLY_PASSWORD};MaxPoolSize=${DATABASE_MAXPOOLSIZE:-50};Max Auto Prepare=${DATABASE_MAXAUTOPREPARE:-16}"
       Query__TopMax: ${QUERY_TOP_MAX:-100}
     ports:
       - "${QUERY_API_PORT:-18081}:8080"

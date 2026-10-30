@@ -291,11 +291,9 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     public async Task CreateImportIndexesAsync(Guid importId, CancellationToken cancellationToken)
     {
         var hex = Hex(importId);
-        var staging = PartitionName("debt_staging", importId);
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
         var command = new CommandDefinition(
             $"""
-            CREATE INDEX IF NOT EXISTS ix_debt_staging_{hex}_entidad ON {staging} (entidad);
             CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
             CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}';
             """,

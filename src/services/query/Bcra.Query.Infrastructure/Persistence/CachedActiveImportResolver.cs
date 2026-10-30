@@ -13,9 +13,11 @@ namespace Bcra.Query.Infrastructure.Persistence;
 public sealed class CachedActiveImportResolver(
     IActiveImportResolver inner,
     IMemoryCache cache,
-    IOptions<ActiveImportCacheOptions> options) : IActiveImportResolver
+    IOptions<ActiveImportCacheOptions> options) : IActiveImportResolver, IDisposable
 {
     private const string CacheKey = "active-import-id";
+
+    private readonly SemaphoreSlim gate = new(1, 1);
 
     public async Task<Guid?> ResolveActiveImportIdAsync(CancellationToken cancellationToken)
     {
@@ -23,18 +25,27 @@ public sealed class CachedActiveImportResolver(
         if (ttl <= TimeSpan.Zero)
             return await inner.ResolveActiveImportIdAsync(cancellationToken);
 
-        var entry = await cache.GetOrCreateAsync(CacheKey, cacheEntry =>
+        if (cache.TryGetValue(CacheKey, out ActiveImportId? cached))
+            return cached?.ImportId;
+
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            cacheEntry.AbsoluteExpirationRelativeToNow = ttl;
-            return ResolveAsync(cancellationToken);
-        });
+            if (cache.TryGetValue(CacheKey, out cached))
+                return cached?.ImportId;
 
-        return entry?.ImportId;
-
-        async Task<ActiveImportId> ResolveAsync(CancellationToken ct) =>
-            new(await inner.ResolveActiveImportIdAsync(ct));
+            var importId = await inner.ResolveActiveImportIdAsync(cancellationToken);
+            cache.Set(CacheKey, new ActiveImportId(importId), ttl);
+            return importId;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>Wrapper para poder cachear también el "sin import activo" (import_id null).</summary>
     private sealed record ActiveImportId(Guid? ImportId);
+
+    public void Dispose() => gate.Dispose();
 }
