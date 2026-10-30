@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using Bcra.Query.Application;
 using Bcra.Query.Application.GetDeudorByCuit;
 using Bcra.Query.Application.GetEntidad;
@@ -6,86 +5,22 @@ using Bcra.Query.Application.GetTopDeudores;
 using Bcra.Query.Application.GetTotales;
 using Bcra.Query.Infrastructure;
 using Bcra.Shared.Infrastructure;
-using Bcra.Shared.Infrastructure.Logging;
 using Bcra.Shared.Infrastructure.Web;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.OpenApi;
-using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, configuration) =>
-    configuration.ConfigureDefaults("query-service").ReadFrom.Configuration(context.Configuration));
+builder.AddDefaultApi("query-service");
 
 builder.Services
-    .AddSharedInfrastructure()
-    .AddObservability("query-service")
     .AddQueryApplication(builder.Configuration)
     .AddQueryInfrastructure(builder.Configuration);
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("default", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100),
-            Window = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:WindowSeconds", 60)),
-            QueueLimit = 0
-        }));
-});
-
-builder.Services.AddProblemDetails();
 builder.Services.AddSingleton<IExceptionHandler, BadRequestExceptionHandler>();
-builder.Services.AddOpenApi(options =>
-{
-    options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1;
-    options.AddDocumentTransformer((document, context, cancellationToken) =>
-    {
-        document.Paths ??= new OpenApiPaths();
-
-        foreach (var (path, summary) in new[] { ("/health/live", "Liveness probe"), ("/health/ready", "Readiness probe") })
-        {
-            document.Paths.TryAdd(path, new OpenApiPathItem
-            {
-                Operations = new Dictionary<HttpMethod, OpenApiOperation>
-                {
-                    [HttpMethod.Get] = new OpenApiOperation
-                    {
-                        Summary = summary,
-                        Responses = new OpenApiResponses
-                        {
-                            ["200"] = new OpenApiResponse { Description = "Healthy" }
-                        }
-                    }
-                }
-            });
-        }
-
-        return Task.CompletedTask;
-    });
-});
 
 var app = builder.Build();
 
-app.UseExceptionHandler();
-app.UseCorrelationId();
-app.UseSerilogRequestLogging();
-app.UseRateLimiter();
-
-app.MapObservabilityEndpoints();
-app.MapOpenApi();
-app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "BCRA Query API v1"));
-
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
-    .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK))
-    .WithName("HealthLive");
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteJson })
-    .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK))
-    .WithName("HealthReady");
+app.MapDefaultServiceEndpoints("BCRA Query API v1");
 
 app.MapGet("/deudores/{cuit}", async (string cuit, GetDeudorByCuitHandler handler, CancellationToken cancellationToken) =>
     {
