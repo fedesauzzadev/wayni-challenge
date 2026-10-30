@@ -34,6 +34,12 @@ public sealed partial class ImportCompletedMessageHandler(
             return MessageProcessingOutcome.Delete;
         }
 
+        if (importCompleted.JobId == Guid.Empty || string.IsNullOrWhiteSpace(importCompleted.Source))
+        {
+            LogMalformedMessage($"JobId is empty or Source is blank (JobId: {importCompleted.JobId}, Source: '{importCompleted.Source}').");
+            return MessageProcessingOutcome.Delete;
+        }
+
         foreach (var notifier in notifiers)
         {
             var result = await notifier.NotifyAsync(importCompleted, cancellationToken);

@@ -122,4 +122,33 @@ public sealed class ImportCompletedMessageHandlerTests
         outcome.Should().Be(MessageProcessingOutcome.Delete);
         await notifier.DidNotReceive().NotifyAsync(Arg.Any<ImportCompletedEvent>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task EventWithEmptyJobId_IsDiscardedAsMalformed()
+    {
+        var notifier = OkNotifier("structured-log");
+        var sut = CreateHandler(notifier);
+
+        var outcome = await sut.HandleAsync(
+            "{\"jobId\":\"00000000-0000-0000-0000-000000000000\",\"source\":\"/data/deudores.txt\"}",
+            CancellationToken.None);
+
+        outcome.Should().Be(MessageProcessingOutcome.Delete);
+        await notifier.DidNotReceive().NotifyAsync(Arg.Any<ImportCompletedEvent>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("{\"jobId\":\"%JOBID%\",\"source\":\"\"}")]
+    [InlineData("{\"jobId\":\"%JOBID%\"}")]
+    [InlineData("{\"jobId\":\"%JOBID%\",\"source\":\"   \"}")]
+    public async Task EventWithEmptySource_IsDiscardedAsMalformed(string template)
+    {
+        var notifier = OkNotifier("structured-log");
+        var sut = CreateHandler(notifier);
+
+        var outcome = await sut.HandleAsync(template.Replace("%JOBID%", Guid.NewGuid().ToString()), CancellationToken.None);
+
+        outcome.Should().Be(MessageProcessingOutcome.Delete);
+        await notifier.DidNotReceive().NotifyAsync(Arg.Any<ImportCompletedEvent>(), Arg.Any<CancellationToken>());
+    }
 }

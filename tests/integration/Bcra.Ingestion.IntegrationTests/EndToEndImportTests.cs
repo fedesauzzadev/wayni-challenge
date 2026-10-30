@@ -192,7 +192,8 @@ internal static class ImportTestHarness
         IngestionOptions options,
         IStagingBatchCommitter? batchCommitter = null,
         IImportEventPublisher? eventPublisher = null,
-        ISituacionAggregationStrategy? situacionStrategy = null)
+        ISituacionAggregationStrategy? situacionStrategy = null,
+        ILogger<ImportJobProcessor>? logger = null)
     {
         var optionsSnapshot = Options.Create(options);
         var repository = fixture.CreateRepository();
@@ -207,7 +208,7 @@ internal static class ImportTestHarness
             TimeProvider.System,
             optionsSnapshot,
             new Bcra.Shared.Infrastructure.Observability.ImportPipelineMeter(),
-            NullLogger<ImportJobProcessor>.Instance);
+            logger ?? NullLogger<ImportJobProcessor>.Instance);
     }
 
     public static ImportWorkerHostedService CreateWorker(PostgresFixture fixture, IngestionOptions options, IImportEventPublisher? eventPublisher = null)

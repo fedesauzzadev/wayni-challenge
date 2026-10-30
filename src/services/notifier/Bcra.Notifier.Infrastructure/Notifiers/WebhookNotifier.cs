@@ -13,6 +13,7 @@ public sealed class WebhookNotifier(
     IOptions<NotificationsOptions> options) : INotifier
 {
     public const string HttpClientName = "notifier-webhook";
+    public const string IdempotencyKeyHeader = "Idempotency-Key";
 
     public string Strategy => "webhook";
 
@@ -23,7 +24,13 @@ public sealed class WebhookNotifier(
         try
         {
             using var client = httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.PostAsJsonAsync(webhookUrl, importCompleted, ImportCompletedEventJson.Options, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Post, webhookUrl)
+            {
+                Content = JsonContent.Create(importCompleted, options: ImportCompletedEventJson.Options)
+            };
+            request.Headers.Add(IdempotencyKeyHeader, importCompleted.JobId.ToString());
+
+            using var response = await client.SendAsync(request, cancellationToken);
 
             return response.IsSuccessStatusCode
                 ? Result.Ok(new NotificationReceipt(Strategy, true))

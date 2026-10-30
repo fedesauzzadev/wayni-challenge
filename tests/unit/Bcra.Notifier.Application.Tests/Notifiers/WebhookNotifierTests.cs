@@ -54,6 +54,22 @@ public sealed class WebhookNotifierTests
     }
 
     [Fact]
+    public async Task SuccessStatusCode_SendsIdempotencyKeyHeaderWithJobId()
+    {
+        var importCompleted = CreateEvent();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        var sut = CreateNotifier(handler, "http://hooks.example/imports");
+
+        await sut.NotifyAsync(importCompleted, CancellationToken.None);
+
+        var request = handler.Requests.Single();
+        request.Headers.TryGetValues(WebhookNotifier.IdempotencyKeyHeader, out var values).Should().BeTrue();
+        values.Should().ContainSingle().Which.Should().Be(
+            importCompleted.JobId.ToString(),
+            "el receptor deduplica re-entregas at-least-once por JobId (ADR-010)");
+    }
+
+    [Fact]
     public async Task NonSuccessStatusCode_ReturnsUndelivered()
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));

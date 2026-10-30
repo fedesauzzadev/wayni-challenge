@@ -106,11 +106,15 @@ public sealed partial class ImportJobProcessor(
             LogSourceChanged(job.Id, ex);
             return new ImportProcessingResult(ImportProcessingOutcome.Failed, job.Id);
         }
-        catch (DbException)
+        catch (DbException ex)
         {
+            LogConnectionLost(job.Id, ex);
             return new ImportProcessingResult(ImportProcessingOutcome.AbortedByConnectionLoss, job.Id);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Database failure assumed to be connection loss while processing job {JobId}; aborting so another worker can reclaim it when the lease expires")]
+    private partial void LogConnectionLost(Guid jobId, Exception exception);
 
     private async Task<T> MeasurePhaseAsync<T>(string phase, Func<CancellationToken, Task<T>> phaseAction, CancellationToken cancellationToken)
     {

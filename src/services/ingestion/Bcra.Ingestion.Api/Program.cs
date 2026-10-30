@@ -6,6 +6,7 @@ using Bcra.Ingestion.Application.UploadImport;
 using Bcra.Ingestion.Infrastructure;
 using Bcra.Shared.Infrastructure;
 using Bcra.Shared.Infrastructure.Web;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,12 +16,18 @@ builder.Services
     .AddIngestionApplication(builder.Configuration)
     .AddIngestionInfrastructure(builder.Configuration);
 
+var uploadOptions = builder.Services.AddOptions<UploadOptions>()
+    .Bind(builder.Configuration.GetSection(UploadOptions.SectionName));
+builder.Services.AddSingleton<IValidateOptions<UploadOptions>, UploadOptionsValidator>();
+builder.Services.AddScoped<UploadApiKeyEndpointFilter>();
+
 const string DocumentGenerationArgument = "getdocument";
 
 var isDocumentGeneration = Environment.CommandLine.Contains(DocumentGenerationArgument, StringComparison.OrdinalIgnoreCase);
 
 if (!isDocumentGeneration)
 {
+    uploadOptions.ValidateOnStart();
     builder.Services.AddHostedService<MigrationHostedService>();
     builder.Services.AddHostedService<ImportWorkerHostedService>();
 }
@@ -35,6 +42,7 @@ app.MapGet("/imports/{id:guid}", async (Guid id, GetImportStatusHandler handler,
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetImportStatus")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<ImportStatusResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -53,9 +61,12 @@ app.MapPost("/imports", async (RequestImportRequest request, RequestImportHandle
             : Results.CreatedAtRoute("GetImportStatus", new { id = response.Id }, response);
     })
     .WithName("RequestImport")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
+    .AddEndpointFilter<UploadApiKeyEndpointFilter>()
     .Produces<ImportRequestResponse>(StatusCodes.Status201Created)
     .Produces<ImportRequestResponse>(StatusCodes.Status200OK)
-    .ProducesProblem(StatusCodes.Status400BadRequest);
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status401Unauthorized);
 
 app.Run();
 

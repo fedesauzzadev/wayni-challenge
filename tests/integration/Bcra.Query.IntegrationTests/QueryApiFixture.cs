@@ -99,7 +99,10 @@ public sealed class QueryApiFactory(string connectionString) : WebApplicationFac
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Database:ConnectionString"] = connectionString,
-            ["Query:TopMax"] = "2"
+            ["Query:TopMax"] = "2",
+            // Los tests resetean la BD entre casos: sin caché del import activo para no leer
+            // un import_id cacheado del test anterior (el decorator se testea aparte).
+            ["Query:ActiveImportCacheTtlSeconds"] = "0"
         }));
     }
 }
