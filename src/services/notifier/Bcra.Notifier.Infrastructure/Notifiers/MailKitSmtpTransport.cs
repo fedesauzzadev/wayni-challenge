@@ -27,7 +27,11 @@ public sealed class MailKitSmtpTransport(IOptions<EmailOptions> options) : ISmtp
 
         var mime = new MimeMessage();
         mime.From.Add(MailboxAddress.Parse(message.From));
-        mime.To.Add(MailboxAddress.Parse(message.To));
+        foreach (var to in message.To)
+        {
+            mime.To.Add(MailboxAddress.Parse(to));
+        }
+
         mime.Subject = message.Subject;
         mime.Body = new TextPart(TextFormat.Plain) { Text = message.Body };
 

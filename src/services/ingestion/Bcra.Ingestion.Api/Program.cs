@@ -2,6 +2,7 @@ using Bcra.Ingestion.Api.Hosting;
 using Bcra.Ingestion.Api.UploadImport;
 using Bcra.Ingestion.Application;
 using Bcra.Ingestion.Application.GetImportStatus;
+using Bcra.Ingestion.Application.GetLatestImport;
 using Bcra.Ingestion.Application.UploadImport;
 using Bcra.Ingestion.Infrastructure;
 using Bcra.Shared.Infrastructure;
@@ -44,6 +45,16 @@ app.MapGet("/imports/{id:guid}", async (Guid id, GetImportStatusHandler handler,
     .WithName("GetImportStatus")
     .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<ImportStatusResponse>(StatusCodes.Status200OK)
+    .ProducesProblem(StatusCodes.Status404NotFound);
+
+app.MapGet("/imports/latest", async (GetLatestImportHandler handler, CancellationToken cancellationToken) =>
+    {
+        var result = await handler.HandleAsync(new GetLatestImportQuery(), cancellationToken);
+        return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
+    })
+    .WithName("GetLatestImport")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
+    .Produces<LatestImportResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status404NotFound);
 
 app.MapPost("/imports", async (RequestImportRequest request, RequestImportHandler handler, CancellationToken cancellationToken) =>

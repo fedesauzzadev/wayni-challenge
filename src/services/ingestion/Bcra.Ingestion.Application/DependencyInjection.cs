@@ -1,4 +1,5 @@
 using Bcra.Ingestion.Application.GetImportStatus;
+using Bcra.Ingestion.Application.GetLatestImport;
 using Bcra.Ingestion.Application.ImportExecution;
 using Bcra.Ingestion.Application.Options;
 using Bcra.Ingestion.Application.UploadImport;
@@ -15,6 +16,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<RequestImportHandler>();
         services.AddScoped<GetImportStatusHandler>();
+        services.AddScoped<GetLatestImportHandler>();
         services.AddScoped<ImportJobProcessor>();
         services.AddScoped<StagingCopyLoader>();
         return services;

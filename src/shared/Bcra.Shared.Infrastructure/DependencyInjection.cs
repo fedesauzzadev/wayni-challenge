@@ -16,19 +16,27 @@ public static class DependencyInjection
     /// <summary>
     /// Registra options bindadas a una sección con validación de data annotations al arranque:
     /// la configuración ausente o inválida falla el boot (no el primer uso).
+    /// <paramref name="validateOnStart"/> en false para options cuya config solo aplica en
+    /// runtime (ej. generación de documentos OpenAPI sin entorno completo).
     /// </summary>
     public static IServiceCollection AddValidatedOptions<TOptions>(
         this IServiceCollection services,
         IConfiguration configuration,
-        string sectionName)
+        string sectionName,
+        bool validateOnStart = true)
         where TOptions : class
     {
-        return services
+        var optionsBuilder = services
             .AddOptions<TOptions>()
             .Bind(configuration.GetSection(sectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart()
-            .Services;
+            .ValidateDataAnnotations();
+
+        if (validateOnStart)
+        {
+            optionsBuilder.ValidateOnStart();
+        }
+
+        return services;
     }
 
     public static IApplicationBuilder UseCorrelationId(this IApplicationBuilder app) =>

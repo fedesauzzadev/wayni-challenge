@@ -15,11 +15,14 @@ Pipeline ELT de deudores bancarios con 3 microservicios (.NET 10, minimal APIs) 
              fuentes: /data (local, allow-list de dirs) o s3://bucket/key (LocalStack/S3, allow-list de buckets)
 
             [prometheus] --scrape /metrics--> [ingestion|query|notifier]   [grafana] <-- datasource+dashboard provisionados
+
+            [web React :5173] --/api--> [BFF Express :4000] --> ingestion/query (HTTP) + S3 (upload) + Postgres (notification_recipient)
 ```
 
 - **Bcra.Ingestion** — acepta uploads idempotentes (`POST /imports`), orquesta la ejecución del import bajo lease (`ImportJobProcessor`): reclamo SKIP LOCKED → staging → agregación → índices pre-swap → swap atómico → DROP del import anterior. Migraciones DbUp (`Scripts/00x_*.sql`). Las fuentes se rutean por esquema (`RoutingFileSourceFactory`): `s3://bucket/key` → `S3FileSource` (rango `bytes=offset-` para reanudar, ETag real, buckets restringidos a `Ingestion:AllowedS3Buckets`), el resto → `LocalFileSource`. Al completar publica `ImportCompletedEvent` en SQS de forma best-effort (el fallo del publish se loguea, no falla el import).
 - **Bcra.Query** — lee la versión publicada resolviendo `active_import`; conexiones de solo lectura sin locks (MVCC).
 - **Bcra.Notifier** — consume `import-completed` con long-poll (`SqsImportCompletedConsumer`), notifica vía log estructurado siempre y webhook HTTP si `Notifications:WebhookUrl` está configurado, y borra el mensaje solo si la notificación fue OK (si falla, vuelve por visibilidad). Readiness incluye chequeo de SQS.
+- **Admin UI** (`frontend/`) — web React + BFF Node (ver [docs/admin-ui.md](docs/admin-ui.md)): proxy fino del BFF sobre ingestion/query, sube los archivos a S3 antes de `POST /imports` (progreso en 2 fases) y gestiona los destinatarios de email en `notification_recipient` (tabla creada por las migraciones de ingestion; notifier lee con rol readonly, el BFF escribe con rol owner; tabla vacía → fallback a `Notifications:Email__To`). Secretos (`UPLOAD_API_KEY`, creds AWS, DB) solo en el BFF. `npm run setup` levanta todo.
 
 **Observabilidad** ([ADR-009](docs/adr/ADR-009-observabilidad-opentelemetry.md)): los 3 servicios registran OpenTelemetry (helper compartido `AddObservability` en `Bcra.Shared.Infrastructure/Observability/`): traces HTTP de ASP.NET Core, métricas de runtime y las métricas custom del pipeline (`ImportPipelineMeter`, meter `Bcra.ImportPipeline`: líneas COPY-eadas, lotes, duración por fase, jobs por estado/resultado), exportadas a `/metrics` en formato Prometheus. El correlation-id viaja como tag del trace y el `TraceId` se enriquece en los logs de Serilog. El docker-compose agrega Prometheus (scrapea los 3) y Grafana con datasource + dashboard del pipeline aprovisionados.
 

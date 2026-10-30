@@ -1,6 +1,7 @@
 using Bcra.Query.Application;
 using Bcra.Query.Application.GetDeudorByCuit;
 using Bcra.Query.Application.GetEntidad;
+using Bcra.Query.Application.GetEntidades;
 using Bcra.Query.Application.GetTopDeudores;
 using Bcra.Query.Application.GetTotales;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<GetDeudorByCuitHandler>();
         services.AddScoped<GetTopDeudoresHandler>();
         services.AddScoped<GetEntidadHandler>();
+        services.AddScoped<GetEntidadesHandler>();
         services.AddScoped<GetTotalesHandler>();
 
         return services;

@@ -6,6 +6,8 @@ obj/
 *.suo
 TestResults/
 BenchmarkDotNet.Artifacts/
+node_modules/
+frontend/web/dist/
 .env
 *.log
 .opencode/

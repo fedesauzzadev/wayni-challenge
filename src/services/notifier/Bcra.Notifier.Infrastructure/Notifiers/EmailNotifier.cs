@@ -12,6 +12,7 @@ namespace Bcra.Notifier.Infrastructure.Notifiers;
 
 public sealed partial class EmailNotifier(
     ISmtpTransport transport,
+    INotificationRecipientStore recipientStore,
     IOptions<EmailOptions> emailOptions,
     IOptions<NotificationsOptions> notificationsOptions,
     ILogger<EmailNotifier> logger) : INotifier
@@ -21,6 +22,13 @@ public sealed partial class EmailNotifier(
     public async Task<Result<NotificationReceipt>> NotifyAsync(ImportCompletedEvent importCompleted, CancellationToken cancellationToken)
     {
         var email = emailOptions.Value;
+        var recipients = await ResolveRecipientsAsync(cancellationToken);
+
+        if (recipients.Count == 0)
+        {
+            LogNoRecipients(importCompleted.JobId);
+            return Result.Ok(new NotificationReceipt(Strategy, Delivered: true));
+        }
 
         try
         {
@@ -28,10 +36,11 @@ public sealed partial class EmailNotifier(
             timeout.CancelAfter(TimeSpan.FromSeconds(notificationsOptions.Value.TimeoutSeconds));
 
             await transport.SendAsync(
-                new EmailMessage(email.From, email.To, BuildSubject(importCompleted), BuildBody(importCompleted)),
+                new EmailMessage(email.From, recipients, BuildSubject(importCompleted), BuildBody(importCompleted)),
                 timeout.Token);
 
-            LogEmailSent(importCompleted.JobId, email.To);
+            var toDisplay = string.Join(", ", recipients);
+            LogEmailSent(importCompleted.JobId, toDisplay);
             return Result.Ok(new NotificationReceipt(Strategy, true));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -40,6 +49,17 @@ public sealed partial class EmailNotifier(
                 "Email.Failed",
                 $"Email notification failed: {ex.Message}"));
         }
+    }
+
+    /// <summary>Destinatarios de la tabla <c>notification_recipient</c>; vacía → fallback a
+    /// <c>Notifications:Email__To</c> (retrocompatible con la config pre-admin-UI).</summary>
+    private async Task<IReadOnlyList<string>> ResolveRecipientsAsync(CancellationToken cancellationToken)
+    {
+        var fromStore = await recipientStore.GetRecipientEmailsAsync(cancellationToken);
+        if (fromStore.Count > 0)
+            return fromStore;
+
+        return string.IsNullOrWhiteSpace(emailOptions.Value.To) ? [] : [emailOptions.Value.To];
     }
 
     private static string BuildSubject(ImportCompletedEvent importCompleted) =>
@@ -63,4 +83,7 @@ public sealed partial class EmailNotifier(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Email notification sent. JobId={JobId} To={To}")]
     private partial void LogEmailSent(Guid jobId, string to);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Email notification skipped: no recipients configured (table notification_recipient empty and Notifications:Email__To blank). JobId={JobId}")]
+    private partial void LogNoRecipients(Guid jobId);
 }

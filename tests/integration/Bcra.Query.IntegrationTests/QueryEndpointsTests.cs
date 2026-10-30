@@ -14,7 +14,7 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
         await fixture.ResetAsync();
         using var client = fixture.CreateClient();
 
-        foreach (var path in new[] { "/totales", "/deudores?top=5", "/deudores/20123456784", "/entidades/266" })
+        foreach (var path in new[] { "/totales", "/deudores?top=5", "/deudores/20123456784", "/entidades/266", "/entidades", "/entidades?codigo=266" })
         {
             using var response = await client.GetAsync(path);
             response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable, $"sin import activo '{path}' responde 503");
@@ -187,6 +187,50 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
 
         using var unknown = await client.GetAsync("/entidades/999");
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task WithActiveImport_GetEntidades_ReturnsPageEnvelope_WithCodigoFilter()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var all = await client.GetAsync("/entidades");
+        all.StatusCode.Should().Be(HttpStatusCode.OK);
+        var page = await all.Content.ReadFromJsonAsync<JsonElement>();
+        page.GetProperty("total").GetInt64().Should().Be(2, "total es la cantidad de entidades del import activo");
+        page.GetProperty("items").EnumerateArray()
+            .Select(entidad => entidad.GetProperty("codigo").GetInt32())
+            .Should().Equal([266, 7], "ordenadas por suma_total DESC");
+        page.GetProperty("items").EnumerateArray()
+            .Select(entidad => entidad.GetProperty("sumaTotalPrestamos").GetDecimal())
+            .Should().BeInDescendingOrder();
+        var bancoNacion = page.GetProperty("items").EnumerateArray()
+            .Single(entidad => entidad.GetProperty("codigo").GetInt32() == 266);
+        bancoNacion.GetProperty("nombre").GetString().Should().Be("BANCO DE LA NACION ARGENTINA");
+
+        using var filtered = await client.GetAsync("/entidades?codigo=266");
+        filtered.StatusCode.Should().Be(HttpStatusCode.OK);
+        var filteredPage = await filtered.Content.ReadFromJsonAsync<JsonElement>();
+        filteredPage.GetProperty("total").GetInt64().Should().Be(1, "filtro exacto por codigo");
+        filteredPage.GetProperty("items").GetArrayLength().Should().Be(1);
+        filteredPage.GetProperty("items")[0].GetProperty("codigo").GetInt32().Should().Be(266);
+
+        using var partial = await client.GetAsync("/entidades?codigo=2");
+        partial.StatusCode.Should().Be(HttpStatusCode.OK);
+        var partialPage = await partial.Content.ReadFromJsonAsync<JsonElement>();
+        partialPage.GetProperty("total").GetInt64().Should().Be(1, "filtro parcial por prefijo de codigo");
+        partialPage.GetProperty("items")[0].GetProperty("codigo").GetInt32().Should().Be(266);
+
+        using var noMatch = await client.GetAsync("/entidades?codigo=999");
+        noMatch.StatusCode.Should().Be(HttpStatusCode.OK, "sin resultados responde 200 con items vacío");
+        var emptyPage = await noMatch.Content.ReadFromJsonAsync<JsonElement>();
+        emptyPage.GetProperty("total").GetInt64().Should().Be(0);
+        emptyPage.GetProperty("items").GetArrayLength().Should().Be(0);
+
+        await AssertProblemAsync(client, "/entidades?codigo=abc", "Query.InvalidEntidadCodigo");
+        await AssertProblemAsync(client, "/entidades?codigo=123456", "Query.InvalidEntidadCodigo");
     }
 
     [Fact]

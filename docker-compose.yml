@@ -108,6 +108,7 @@ services:
     container_name: bcra-notifier-api
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=bcra_readonly;Password=${POSTGRES_READONLY_PASSWORD};MaxPoolSize=5"
       AWS__EndpointUrl: "http://localstack:4566"
       AWS__Region: ${AWS_REGION:-us-east-1}
       AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-test}
@@ -123,6 +124,8 @@ services:
     ports:
       - "${NOTIFIER_API_PORT:-18082}:8080"
     depends_on:
+      postgres:
+        condition: service_healthy
       localstack:
         condition: service_started
       mailpit:

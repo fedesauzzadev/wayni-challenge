@@ -2,6 +2,7 @@ using Bcra.Query.Application;
 using Bcra.Query.Application.Contracts;
 using Bcra.Query.Application.GetDeudorByCuit;
 using Bcra.Query.Application.GetEntidad;
+using Bcra.Query.Application.GetEntidades;
 using Bcra.Query.Application.GetTopDeudores;
 using Bcra.Query.Application.GetTotales;
 using Bcra.Query.Infrastructure;
@@ -56,6 +57,17 @@ app.MapGet("/entidades/{codigo:int}", async (int codigo, GetEntidadHandler handl
     .Produces<EntidadResumenResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+app.MapGet("/entidades", async (string? codigo, GetEntidadesHandler handler, CancellationToken cancellationToken) =>
+    {
+        var result = await handler.HandleAsync(new GetEntidadesQuery(codigo), cancellationToken);
+        return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
+    })
+    .WithName("GetEntidades")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
+    .Produces<EntidadesPageResponse>(StatusCodes.Status200OK)
+    .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 app.MapGet("/totales", async (GetTotalesHandler handler, CancellationToken cancellationToken) =>

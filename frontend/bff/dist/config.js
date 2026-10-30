@@ -1,0 +1,30 @@
+function required(env, key) {
+    const value = env[key];
+    if (!value || value.trim() === "") {
+        throw new Error(`Missing required environment variable ${key}`);
+    }
+    return value;
+}
+/** Toda la config vive en el BFF (nunca en el front): API keys, credenciales AWS y DB. */
+export function loadConfig(env = process.env) {
+    return {
+        port: Number(env.BFF_PORT ?? 4000),
+        ingestionApiUrl: env.INGESTION_API_URL ?? "http://localhost:18080",
+        queryApiUrl: env.QUERY_API_URL ?? "http://localhost:18081",
+        uploadApiKey: env.UPLOAD_API_KEY ?? required(env, "UPLOAD_API_KEY"),
+        s3: {
+            endpoint: env.S3_ENDPOINT ?? `http://localhost:${env.LOCALSTACK_PORT ?? 4566}`,
+            region: env.AWS_REGION ?? "us-east-1",
+            bucket: env.S3_BUCKET ?? "bcra-local",
+            accessKeyId: env.AWS_ACCESS_KEY_ID ?? "test",
+            secretAccessKey: env.AWS_SECRET_ACCESS_KEY ?? "test",
+        },
+        postgres: {
+            host: env.POSTGRES_HOST ?? "localhost",
+            port: Number(env.POSTGRES_PORT ?? 5544),
+            database: env.POSTGRES_DB ?? "bcra",
+            user: env.POSTGRES_USER ?? "bcra",
+            password: required(env, "POSTGRES_PASSWORD"),
+        },
+    };
+}

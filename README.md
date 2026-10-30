@@ -42,13 +42,20 @@ curl http://localhost:18080/metrics                             # métricas inge
 curl http://localhost:18081/metrics                             # métricas query
 curl http://localhost:18082/metrics                             # métricas notifier
 curl http://localhost:9090/api/v1/targets                       # 3 targets en "up"
+
+npm run setup                                                   # admin UI: stack docker + BFF (:4000) + web (:5173) + browser
+npm test                                                        # en frontend/bff y frontend/web (vitest)
 ```
 
 Al levantar el compose, `localstack/init/01-init.sh` crea el bucket `S3_BUCKET` (por defecto `bcra-local`) y la cola `import-completed` (idempotente). Las variables `SQS_IMPORT_COMPLETED_URL` y `WEBHOOK_URL` están documentadas en `.env.example`: ingestion publica ahí el `ImportCompletedEvent` al completar un import y notifier lo consume; si `WEBHOOK_URL` se configura, notifier además hace HTTP POST del evento.
 
+### Interfaz de administración
+
+`npm run setup` desde la raíz levanta todo (stack docker + BFF Node + web React) y abre el browser en http://localhost:5173. Tres pestañas: **Archivo** (última carga, upload con progreso en 2 fases — subida a S3 + procesamiento del import, con `Maeent.txt`/`Nomdeu.txt` opcionales — y gestión de emails de notificación), **Deudores** (grilla paginada por el backend) y **Entidades** (grilla con filtro por código + totales). Detalle: [docs/admin-ui.md](docs/admin-ui.md).
+
 ### Notificaciones por email
 
-Al completarse un import, notifier envía además un email con las métricas del evento. El destinatario se cambia en un solo lugar (`.env`): `NOTIFICATIONS__EMAIL__TO=fede.sauzza.dev@gmail.com`. Por defecto el SMTP apunta a Mailpit del compose, que captura los emails sin enviarlos de verdad (UI en http://localhost:8025). Para envío real con Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_SSL=true`, `SMTP_USER=<tu@gmail.com>` y `SMTP_PASSWORD=<app-password>` (nunca la contraseña de la cuenta). El envío sigue la semántica at-least-once del notifier ([ADR-010](docs/adr/ADR-010-notifier-at-least-once-webhook.md)): si falla, el mensaje vuelve a la cola y se reintenta.
+Al completarse un import, notifier envía además un email con las métricas del evento a **todos los destinatarios registrados** en la tabla `notification_recipient` (se gestionan desde la pestaña Archivo de la admin UI). Tabla vacía → fallback al `NOTIFICATIONS__EMAIL__TO` de `.env` (p. ej. `fede.sauzza.dev@gmail.com`). Por defecto el SMTP apunta a Mailpit del compose, que captura los emails sin enviarlos de verdad (UI en http://localhost:8025). Para envío real con Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_SSL=true`, `SMTP_USER=<tu@gmail.com>` y `SMTP_PASSWORD=<app-password>` (nunca la contraseña de la cuenta). El envío sigue la semántica at-least-once del notifier ([ADR-010](docs/adr/ADR-010-notifier-at-least-once-webhook.md)): si falla, el mensaje vuelve a la cola y se reintenta.
 
 ## Observabilidad
 

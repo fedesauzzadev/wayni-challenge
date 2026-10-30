@@ -6,9 +6,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddDefaultApi("notifier-service", useRateLimiter: false);
 
+const string DocumentGenerationArgument = "getdocument";
+
+var isDocumentGeneration = Environment.CommandLine.Contains(DocumentGenerationArgument, StringComparison.OrdinalIgnoreCase);
+
 builder.Services
     .AddNotifierApplication()
-    .AddNotifierInfrastructure(builder.Configuration);
+    .AddNotifierInfrastructure(builder.Configuration, isDocumentGeneration);
 
 var app = builder.Build();
 

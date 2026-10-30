@@ -73,6 +73,17 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         return row?.ToDomain();
     }
 
+    public async Task<ImportJob?> GetLatestAsync(CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        var command = new CommandDefinition(
+            $"SELECT {SelectColumns} FROM import_job ORDER BY created_at DESC, id DESC LIMIT 1",
+            cancellationToken: cancellationToken);
+
+        var row = await connection.QuerySingleOrDefaultAsync<ImportJobRow>(command);
+        return row?.ToDomain();
+    }
+
     public async Task SaveAsync(ImportJob job, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
