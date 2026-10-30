@@ -43,6 +43,7 @@ public sealed partial class DbUpMigrator
             .PostgresqlDatabase(_options.ConnectionString)
             .WithScriptsEmbeddedInAssembly(typeof(DbUpMigrator).Assembly)
             .WithTransactionPerScript()
+            .WithExecutionTimeout(TimeSpan.FromSeconds(_options.MigrationCommandTimeoutSeconds))
             .LogTo(new DbUpLoggerAdapter(_logger))
             .Build();
 
