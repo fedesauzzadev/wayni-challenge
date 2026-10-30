@@ -5,15 +5,19 @@ on:
     branches: [master, main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -40,3 +44,40 @@ jobs:
 
       - name: Integration tests Query (Testcontainers, requiere Docker)
         run: dotnet test tests/integration/Bcra.Query.IntegrationTests --no-build --nologo
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/*/package-lock.json
+
+      - name: BFF - install
+        run: npm ci
+        working-directory: frontend/bff
+
+      - name: BFF - build (tsc)
+        run: npm run build
+        working-directory: frontend/bff
+
+      - name: BFF - tests
+        run: npm test
+        working-directory: frontend/bff
+
+      - name: Web - install
+        run: npm ci
+        working-directory: frontend/web
+
+      - name: Web - build (tsc + vite)
+        run: npm run build
+        working-directory: frontend/web
+
+      - name: Web - tests
+        run: npm test
+        working-directory: frontend/web
