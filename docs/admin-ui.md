@@ -38,6 +38,8 @@ El script ([`scripts/setup.mjs`](../scripts/setup.mjs)) crea `.env` desde `.env.
 
 1. **Fase (a) — entrega del archivo**: la web hace `POST /api/imports/upload` (multipart) al BFF con `onUploadProgress` de axios y un destino `storage`: `local` (default de la UI — el BFF copia al `DATA_DIR` del host, que el compose monta como `/data` en el ingestion, sin pasar por S3) o `s3` (sube al bucket `bcra-local` de LocalStack; si el campo no viene, el BFF defaulta a `s3`, retrocompatible). En ambos destinos las referencias opcionales van al mismo prefijo del periodo (`<periodo>/Maeent.txt`, `<periodo>/Nomdeu.txt`) y el archivo de deudores con nombre **por contenido**: `<periodo>/deudores-<sha256-16>.txt`.
 2. El BFF calcula el **sha256 del archivo** (etag) y llama a `POST /imports` del ingestion con `source=s3://…/deudores-<hash>.txt` (o `/data/…` en modo local), etag, size y periodo. La idempotencia (`source+etag+periodo`, índice único) es la del backend: re-subir el mismo archivo en el mismo periodo devuelve el job existente (`alreadyExisted`), sin re-procesar.
+
+   > **El nombre del archivo es irrelevante para la deduplicación**: como el source y el etag se derivan del contenido (sha256), renombrar `deudores.txt` a cualquier otra cosa no fuerza una nueva corrida — mismo contenido + mismo periodo → mismo job existente. Las únicas formas de forzar un import nuevo son **cambiar el contenido** (aunque sea un byte) o **usar otro periodo**.
 3. **Fase (b) — procesamiento**: la web hace polling de `GET /api/imports/{id}` cada 2 s y muestra `loadingProgressPercent` (`bytesCommitted/size`) hasta el estado terminal (`Completed`/`Failed`).
 
 ## Emails de notificación

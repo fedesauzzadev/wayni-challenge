@@ -240,6 +240,19 @@ export function ArchivoPage() {
 
   const latest = latestQuery.data?.latest ?? null;
 
+  // Las referencias viven por periodo: si el periodo elegido no es el del último import (o no
+  // hay imports), el pipeline no va a encontrar Maeent.txt/Nomdeu.txt salvo que vengan adjuntos.
+  const missingReferences = [
+    ...(maeent ? [] : ["Maeent.txt"]),
+    ...(nomdeu ? [] : ["Nomdeu.txt"]),
+  ];
+  const referencesWarning =
+    periodo.length === 6 &&
+    missingReferences.length > 0 &&
+    (!latest || Number(periodo) !== latest.periodo)
+      ? missingReferences
+      : null;
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -279,9 +292,11 @@ export function ArchivoPage() {
           <CardDescription>
             Elegí cómo entregar el archivo: <strong>directo</strong> (sin S3, alcanza con
             seleccionarlo de tu PC) o <strong>vía S3</strong> (LocalStack). En ambos casos el
-            ingestion dispara el pipeline: staging → agregación → swap atómico. Incluí
-            <code className="text-xs"> Maeent.txt</code> y <code className="text-xs">Nomdeu.txt</code> la
-            primera vez (o cuando cambien): el pipeline los busca junto al archivo de deudores.
+            ingestion dispara el pipeline: staging → agregación → swap atómico. Las referencias{" "}
+            <code className="text-xs">Maeent.txt</code> y <code className="text-xs">Nomdeu.txt</code>{" "}
+            se guardan por periodo: incluilas la primera vez que cargues un periodo y cada vez que
+            cambies de periodo (o cuando cambien los maestros) — el pipeline las busca en la carpeta
+            del periodo y, si no están, el import falla.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -383,6 +398,19 @@ export function ArchivoPage() {
           </form>
 
           <p className="text-xs text-muted-foreground">{storageDescriptions[storage]}</p>
+
+          {referencesWarning && (
+            <p
+              className="text-xs text-amber-600 dark:text-amber-400"
+              role="status"
+              aria-live="polite"
+            >
+              El periodo {formatPeriodo(Number(periodo))} no tiene referencias guardadas: si es la
+              primera vez que lo cargás, adjuntá{" "}
+              {referencesWarning.join(" y ")} — el import falla si el pipeline no los encuentra en
+              la carpeta del periodo.
+            </p>
+          )}
 
           {fileMeta && phase && (
             <UploadProgress
