@@ -24,7 +24,10 @@ public sealed class EmailNotifierTests
         0,
         285,
         12.5,
-        new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
+        new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc),
+        TotalDeudores: 7,
+        TotalEntidades: 2,
+        SumaTotalPrestamos: 1234.5m);
 
     private static EmailNotifier CreateNotifier(
         StubSmtpTransport transport,
@@ -58,6 +61,9 @@ public sealed class EmailNotifierTests
             .Contain("Lineas procesadas: 10")
             .And.Contain("Lineas rechazadas: 0")
             .And.Contain("Registros de control descartados (marcador 98/99): 285")
+            .And.Contain("Deudores: 7")
+            .And.Contain("Entidades: 2")
+            .And.Contain("Suma total de prestamos: 1234.5")
             .And.Contain("Duracion: 12.5 ms");
     }
 

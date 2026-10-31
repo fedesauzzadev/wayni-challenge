@@ -110,6 +110,18 @@ public sealed partial class ImportJobProcessor(
             LogSourceNotFound(job.Id, ex);
             return result;
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            var result = await MarkJobFailedAsync(job, cancellationToken);
+            LogSourceNotAuthorized(job.Id, ex);
+            return result;
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            var result = await MarkJobFailedAsync(job, cancellationToken);
+            LogSourceShrunk(job.Id, ex);
+            return result;
+        }
         catch (DbException ex)
         {
             LogConnectionLost(job.Id, ex);
@@ -149,6 +161,12 @@ public sealed partial class ImportJobProcessor(
     [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} was not found; the job is now Failed instead of retrying forever")]
     private partial void LogSourceNotFound(Guid jobId, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} is not allowed (outside the allow-listed dirs/buckets); the job is now Failed instead of retrying forever")]
+    private partial void LogSourceNotAuthorized(Guid jobId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Source of job {JobId} is smaller than the committed checkpoint (truncated or replaced); the job is now Failed instead of retrying forever")]
+    private partial void LogSourceShrunk(Guid jobId, Exception exception);
+
     private async Task PublishCompletedEventAsync(ImportJob job, CancellationToken cancellationToken)
     {
         try
@@ -158,10 +176,12 @@ public sealed partial class ImportJobProcessor(
                 : 0d;
             var completedAt = job.FinishedAtUtc ?? clock.GetUtcNow();
 
-            // Sin queries a la DB acá: los totales agregados exigirían un count/sum sobre
-            // millones de filas recién escritas (I/O saturado justo tras el import) y
-            // demoraban o perdían la notificación; el evento viaja solo con lo que ya
-            // tiene el job en memoria.
+            // Los totales del resumen ya no exigen COUNT/SUM sobre millones de filas recién
+            // escritas (motivo por el que se quitaron en su momento): la agregación los
+            // precomputa en import_job y acá es una lectura de una fila. Igual que el publish,
+            // la lectura es best-effort: si falla, el evento sale con totales en cero porque
+            // perder la notificación es peor que notificar sin resumen.
+            var totals = await ReadTotalsBestEffortAsync(job.Id, cancellationToken) ?? new(0, 0, 0);
             await eventPublisher.PublishAsync(
                 new ImportCompletedEvent(
                     job.Id,
@@ -171,7 +191,10 @@ public sealed partial class ImportJobProcessor(
                     job.LinesRejected,
                     job.LinesSkippedControl,
                     durationMs,
-                    completedAt.UtcDateTime),
+                    completedAt.UtcDateTime,
+                    totals.DeudoresCount,
+                    totals.EntidadesCount,
+                    totals.SumaTotal),
                 cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -180,8 +203,24 @@ public sealed partial class ImportJobProcessor(
         }
     }
 
+    private async Task<ImportJobTotals?> ReadTotalsBestEffortAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await jobStore.GetTotalsAsync(jobId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogTotalsReadFailed(jobId, ex);
+            return null;
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to publish ImportCompletedEvent for job {JobId}; the import stays completed")]
     private partial void LogEventPublishFailed(Guid jobId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read precomputed totals for job {JobId}; the ImportCompletedEvent will be published with zero totals")]
+    private partial void LogTotalsReadFailed(Guid jobId, Exception exception);
 
     private async Task LoadReferenceTablesAsync(ImportJob job, CancellationToken cancellationToken)
     {

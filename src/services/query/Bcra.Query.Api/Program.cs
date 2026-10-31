@@ -36,12 +36,25 @@ app.MapGet("/deudores/{cuit}", async (string cuit, GetDeudorByCuitHandler handle
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
-app.MapGet("/deudores", async (int? offset, int? limit, int? top, bool? omitirSinNombre, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
+app.MapGet("/deudores", async (int? offset, int? limit, int? top, bool? omitirSinNombre, int? situacionMaxima, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
     {
-        var result = await handler.HandleAsync(new GetTopDeudoresQuery(offset, limit, top, omitirSinNombre ?? false), cancellationToken);
+        var result = await handler.HandleAsync(new GetTopDeudoresQuery(offset, limit, top, omitirSinNombre ?? false, situacionMaxima), cancellationToken);
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
     })
     .WithName("GetTopDeudores")
+    .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
+    .Produces<DeudoresPageResponse>(StatusCodes.Status200OK)
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+// Ruta literal del enunciado (GET /deudores/top/{n}): alias del top por query param; mismo
+// envelope paginado (offset 0, limit n acotado por Query:TopMax).
+app.MapGet("/deudores/top/{n:int}", async (int n, GetTopDeudoresHandler handler, CancellationToken cancellationToken) =>
+    {
+        var result = await handler.HandleAsync(new GetTopDeudoresQuery(Offset: 0, Limit: null, Top: n, OmitirSinNombre: false), cancellationToken);
+        return result.IsSuccess ? Results.Ok(result.Value) : result.Error.ToProblem();
+    })
+    .WithName("GetTopDeudoresTopN")
     .RequireRateLimiting(DefaultApiExtensions.DefaultRateLimitPolicy)
     .Produces<DeudoresPageResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)

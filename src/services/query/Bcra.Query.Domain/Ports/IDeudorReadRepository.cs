@@ -7,7 +7,7 @@ public interface IDeudorReadRepository
 {
     Task<DeudorResumen?> GetDeudorAsync(Guid importId, Cuit cuit, CancellationToken cancellationToken);
 
-    Task<DeudoresPage> GetDeudoresPageAsync(Guid importId, int offset, int limit, bool omitirSinNombre, CancellationToken cancellationToken);
+    Task<DeudoresPage> GetDeudoresPageAsync(Guid importId, int offset, int limit, bool omitirSinNombre, int? situacionMaxima, CancellationToken cancellationToken);
 
     Task<DeudorTotales> GetTotalesAsync(Guid importId, CancellationToken cancellationToken);
 }

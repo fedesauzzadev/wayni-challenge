@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Bcra.Query.Application.GetTopDeudores;
 
-public sealed record GetTopDeudoresQuery(int? Offset, int? Limit, int? Top, bool OmitirSinNombre);
+public sealed record GetTopDeudoresQuery(int? Offset, int? Limit, int? Top, bool OmitirSinNombre, int? SituacionMaxima = null);
 
 public sealed record DeudoresPageResponse(
     long Total,
@@ -40,6 +40,12 @@ public sealed class GetTopDeudoresHandler(
                 Error.Validation("Query.InvalidTop", $"'{query.Top}' is not a valid top value; it must be 1 or greater."));
         }
 
+        if (query.SituacionMaxima is < 0 or > 99)
+        {
+            return Result.Fail<DeudoresPageResponse>(
+                Error.Validation("Query.InvalidSituacion", $"'{query.SituacionMaxima}' is not a valid situacion value; it must be between 0 and 99."));
+        }
+
         var activeImport = await activeImportResolver.ResolveActiveImportOrFailAsync(cancellationToken);
         if (activeImport.IsFailure)
         {
@@ -48,7 +54,7 @@ public sealed class GetTopDeudoresHandler(
 
         var offset = query.Offset ?? 0;
         var limit = Math.Min(query.Limit ?? query.Top ?? topMax, topMax);
-        var page = await repository.GetDeudoresPageAsync(activeImport.Value, offset, limit, query.OmitirSinNombre, cancellationToken);
+        var page = await repository.GetDeudoresPageAsync(activeImport.Value, offset, limit, query.OmitirSinNombre, query.SituacionMaxima, cancellationToken);
         return Result.Ok(new DeudoresPageResponse(
             page.Total,
             offset,

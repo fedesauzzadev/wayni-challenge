@@ -44,6 +44,9 @@ public sealed class ImportCompletedEventTests(PostgresFixture fixture)
         importCompleted.LinesSkippedControl.Should().Be(sample.SkippedControlLines);
         importCompleted.DurationMs.Should().BeGreaterThanOrEqualTo(0);
         importCompleted.CompletedAtUtc.Should().BeOnOrAfter(DateTime.UtcNow.AddMinutes(-5));
+        importCompleted.TotalDeudores.Should().Be(sample.PorCuit.Count, "totales precomputados en import_job por la agregación");
+        importCompleted.TotalEntidades.Should().Be(sample.PorEntidad.Count);
+        importCompleted.SumaTotalPrestamos.Should().Be(sample.PorCuit.Values.Sum(porCuit => porCuit.Suma));
     }
 
     [Fact]

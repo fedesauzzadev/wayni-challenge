@@ -8,7 +8,7 @@ namespace Bcra.Shared.Domain.Tests.Contracts;
 public class ImportCompletedEventJsonTests
 {
     private const string FixtureJson =
-        """{"jobId":"0f2f1d0e-8b8a-4c3d-9e7f-2a1b0c5d4e6f","source":"/data/deudores.txt","periodo":202311,"linesProcessed":1000,"linesRejected":3,"linesSkippedControl":285,"durationMs":4321.5,"completedAtUtc":"2026-10-29T12:00:00Z"}""";
+        """{"jobId":"0f2f1d0e-8b8a-4c3d-9e7f-2a1b0c5d4e6f","source":"/data/deudores.txt","periodo":202311,"linesProcessed":1000,"linesRejected":3,"linesSkippedControl":285,"durationMs":4321.5,"completedAtUtc":"2026-10-29T12:00:00Z","totalDeudores":19247633,"totalEntidades":485,"sumaTotalPrestamos":1850.7}""";
 
     private static readonly JsonSerializerOptions WebDefaultsItReplaces = new(JsonSerializerDefaults.Web);
 
@@ -20,7 +20,10 @@ public class ImportCompletedEventJsonTests
         3,
         285,
         4_321.5,
-        new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc));
+        new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc),
+        TotalDeudores: 19_247_633,
+        TotalEntidades: 485,
+        SumaTotalPrestamos: 1850.7m);
 
     [Fact]
     public void Serialize_Fixture_IsByteIdentical()
@@ -28,6 +31,26 @@ public class ImportCompletedEventJsonTests
         var json = JsonSerializer.Serialize(CreateFixtureEvent(), ImportCompletedEventJson.Options);
 
         json.Should().Be(FixtureJson);
+    }
+
+    [Fact]
+    public void Serialize_ZeroTotals_OmitsThemFromDefaultCtor()
+    {
+        var withoutTotals = CreateFixtureEvent() with { TotalDeudores = 0, TotalEntidades = 0, SumaTotalPrestamos = 0 };
+
+        JsonSerializer.Serialize(withoutTotals, ImportCompletedEventJson.Options)
+            .Should().Contain("\"totalDeudores\":0", "los totales siempre viajan (default 0), sin condicionales de serialización");
+    }
+
+    [Fact]
+    public void Deserialize_OldMessageWithoutTotals_DefaultsToZero()
+    {
+        var legacy =
+            """{"jobId":"0f2f1d0e-8b8a-4c3d-9e7f-2a1b0c5d4e6f","source":"/data/deudores.txt","periodo":202311,"linesProcessed":1000,"linesRejected":3,"linesSkippedControl":285,"durationMs":4321.5,"completedAtUtc":"2026-10-29T12:00:00Z"}""";
+
+        var deserialized = JsonSerializer.Deserialize<ImportCompletedEvent>(legacy, ImportCompletedEventJson.Options);
+
+        deserialized.Should().Be(CreateFixtureEvent() with { TotalDeudores = 0, TotalEntidades = 0, SumaTotalPrestamos = 0 });
     }
 
     [Fact]

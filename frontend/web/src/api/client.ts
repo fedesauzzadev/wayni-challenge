@@ -74,8 +74,12 @@ export const api = {
       ),
     ),
 
-  deudores: (offset: number, limit: number) =>
-    unwrap(http.get<DeudoresPage>("/deudores", { params: { offset, limit } })),
+  deudores: (offset: number, limit: number, situacionMaxima?: number) =>
+    unwrap(
+      http.get<DeudoresPage>("/deudores", {
+        params: { offset, limit, ...(situacionMaxima ? { situacionMaxima } : {}) },
+      }),
+    ),
 
   entidades: (codigo?: string) =>
     unwrap(http.get<EntidadesPage>("/entidades", { params: codigo ? { codigo } : {} })),

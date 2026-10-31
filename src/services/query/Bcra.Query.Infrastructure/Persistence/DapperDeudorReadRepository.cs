@@ -36,24 +36,27 @@ public sealed class DapperDeudorReadRepository(
         return row?.ToReadModel();
     }
 
-    public async Task<DeudoresPage> GetDeudoresPageAsync(Guid importId, int offset, int limit, bool omitirSinNombre, CancellationToken cancellationToken)
+    public async Task<DeudoresPage> GetDeudoresPageAsync(Guid importId, int offset, int limit, bool omitirSinNombre, int? situacionMaxima, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        var nombreFilter = omitirSinNombre ? " AND n.nombre IS NOT NULL" : string.Empty;
+        var filters =
+            (omitirSinNombre ? " AND n.nombre IS NOT NULL" : string.Empty)
+            + (situacionMaxima is { } situacion ? " AND d.situacion_maxima = @Situacion" : string.Empty);
         var timeout = databaseOptions.Value.CommandTimeoutSeconds;
 
-        // Sin filtro de nombre el total es el precomputado en import_job por la agregación:
+        // Sin filtros el total es el precomputado en import_job por la agregación:
         // un COUNT real sobre ~20M filas cuesta >10s con cache frío; acá es una lectura de 1 fila.
+        // Con cualquier filtro activo el precomputado no aplica y se cuenta con los mismos filtros.
         var countCommand = new CommandDefinition(
-            omitirSinNombre
-                ? """
+            filters.Length == 0
+                ? "SELECT deudores_count::bigint FROM import_job WHERE id = @ImportId"
+                : $"""
                   SELECT COUNT(*)::bigint
                   FROM deudor_agg d
                   LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
-                  WHERE d.import_id = @ImportId AND n.nombre IS NOT NULL
-                  """
-                : "SELECT deudores_count::bigint FROM import_job WHERE id = @ImportId",
-            new { ImportId = importId },
+                  WHERE d.import_id = @ImportId{filters}
+                  """,
+            new { ImportId = importId, Situacion = situacionMaxima },
             commandTimeout: timeout,
             cancellationToken: cancellationToken);
 
@@ -62,11 +65,11 @@ public sealed class DapperDeudorReadRepository(
             SELECT {SelectColumns}
             FROM deudor_agg d
             LEFT JOIN deudor_nombre n ON n.cuit = d.cuit
-            WHERE d.import_id = @ImportId{nombreFilter}
+            WHERE d.import_id = @ImportId{filters}
             ORDER BY d.suma_total DESC, d.cuit ASC
             LIMIT @Limit OFFSET @Offset;
             """,
-            new { ImportId = importId, Limit = limit, Offset = offset },
+            new { ImportId = importId, Situacion = situacionMaxima, Limit = limit, Offset = offset },
             commandTimeout: timeout,
             cancellationToken: cancellationToken);
 

@@ -13,7 +13,8 @@ public sealed partial class StructuredLogNotifier(ILogger<StructuredLogNotifier>
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "Import completed. JobId={JobId} Periodo={Periodo} Source={Source} LinesProcessed={LinesProcessed} " +
-                  "LinesRejected={LinesRejected} LinesSkippedControl={LinesSkippedControl} DurationMs={DurationMs} CompletedAtUtc={CompletedAtUtc}")]
+                  "LinesRejected={LinesRejected} LinesSkippedControl={LinesSkippedControl} TotalDeudores={TotalDeudores} " +
+                  "TotalEntidades={TotalEntidades} SumaTotalPrestamos={SumaTotalPrestamos} DurationMs={DurationMs} CompletedAtUtc={CompletedAtUtc}")]
     private partial void LogImportCompleted(
         Guid jobId,
         int? periodo,
@@ -21,6 +22,9 @@ public sealed partial class StructuredLogNotifier(ILogger<StructuredLogNotifier>
         long linesProcessed,
         long linesRejected,
         long linesSkippedControl,
+        long totalDeudores,
+        long totalEntidades,
+        decimal sumaTotalPrestamos,
         double durationMs,
         DateTime completedAtUtc);
 
@@ -33,6 +37,9 @@ public sealed partial class StructuredLogNotifier(ILogger<StructuredLogNotifier>
             importCompleted.LinesProcessed,
             importCompleted.LinesRejected,
             importCompleted.LinesSkippedControl,
+            importCompleted.TotalDeudores,
+            importCompleted.TotalEntidades,
+            importCompleted.SumaTotalPrestamos,
             importCompleted.DurationMs,
             importCompleted.CompletedAtUtc);
 

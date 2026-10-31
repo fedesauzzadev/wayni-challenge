@@ -171,6 +171,65 @@ public sealed class QueryEndpointsTests(QueryApiFixture fixture)
     }
 
     [Fact]
+    public async Task WithActiveImport_GetTopDeudores_LiteralTopPath_ReturnsTopN_AndValidatesN()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var top1 = await client.GetAsync("/deudores/top/1");
+        top1.StatusCode.Should().Be(HttpStatusCode.OK);
+        var page = await top1.Content.ReadFromJsonAsync<JsonElement>();
+        page.GetProperty("offset").GetInt32().Should().Be(0, "el alias top/{n} pagina desde 0");
+        page.GetProperty("limit").GetInt32().Should().Be(1, "n actúa como limit");
+        page.GetProperty("items").GetArrayLength().Should().Be(1);
+        page.GetProperty("items")[0].GetProperty("cuit").GetString().Should().Be("20123456784", "el deudor con mayor suma_total");
+
+        using var clamped = await client.GetAsync("/deudores/top/99");
+        clamped.StatusCode.Should().Be(HttpStatusCode.OK);
+        var clampedPage = await clamped.Content.ReadFromJsonAsync<JsonElement>();
+        clampedPage.GetProperty("limit").GetInt32().Should().Be(2, "n mayor que TopMax se acota igual que limit/top");
+
+        await AssertProblemAsync(client, "/deudores/top/0", "Query.InvalidTop");
+        await AssertProblemAsync(client, "/deudores/top/-3", "Query.InvalidTop");
+
+        using var notInt = await client.GetAsync("/deudores/top/abc");
+        notInt.StatusCode.Should().Be(HttpStatusCode.NotFound, "n no entero no matchea la ruta {n:int}");
+    }
+
+    [Fact]
+    public async Task WithActiveImport_GetTopDeudores_SituacionFilter_FiltersBySituacionMaxima_AndCounts()
+    {
+        await fixture.ResetAsync();
+        await fixture.SeedActiveImportAsync();
+        using var client = fixture.CreateClient();
+
+        using var irrecuperable = await client.GetAsync("/deudores?situacionMaxima=5");
+        irrecuperable.StatusCode.Should().Be(HttpStatusCode.OK);
+        var worst = await irrecuperable.Content.ReadFromJsonAsync<JsonElement>();
+        worst.GetProperty("total").GetInt64().Should().Be(1, "con filtro activo el total cuenta con el mismo filtro");
+        worst.GetProperty("items").EnumerateArray()
+            .Should().OnlyContain(deudor => deudor.GetProperty("situacionMaxima").GetInt32() == 5);
+
+        using var normal = await client.GetAsync("/deudores?situacionMaxima=1&limit=5");
+        normal.StatusCode.Should().Be(HttpStatusCode.OK);
+        var normals = await normal.Content.ReadFromJsonAsync<JsonElement>();
+        normals.GetProperty("total").GetInt64().Should().Be(2, "dos deudores con situacion_maxima=1");
+        normals.GetProperty("items").EnumerateArray()
+            .Select(deudor => deudor.GetProperty("cuit").GetString())
+            .Should().Equal(["20000000009", "27000000008"], "mantiene el orden por suma_total DESC dentro del filtro");
+
+        using var empty = await client.GetAsync("/deudores?situacionMaxima=2");
+        empty.StatusCode.Should().Be(HttpStatusCode.OK, "sin resultados responde 200 con items vacío");
+        var emptyPage = await empty.Content.ReadFromJsonAsync<JsonElement>();
+        emptyPage.GetProperty("total").GetInt64().Should().Be(0);
+        emptyPage.GetProperty("items").GetArrayLength().Should().Be(0);
+
+        await AssertProblemAsync(client, "/deudores?situacionMaxima=100", "Query.InvalidSituacion");
+        await AssertProblemAsync(client, "/deudores?situacionMaxima=-1", "Query.InvalidSituacion");
+    }
+
+    [Fact]
     public async Task WithActiveImport_GetEntidad_ReturnsSummary_And404ForUnknown()
     {
         await fixture.ResetAsync();

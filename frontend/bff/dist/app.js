@@ -122,7 +122,7 @@ export function createApp(deps) {
     app.get("/api/deudores", async (req, res, next) => {
         try {
             const query = new URLSearchParams();
-            for (const key of ["offset", "limit", "top", "omitirSinNombre"]) {
+            for (const key of ["offset", "limit", "top", "omitirSinNombre", "situacionMaxima"]) {
                 const value = req.query[key];
                 if (typeof value === "string" && value !== "") {
                     query.set(key, value);

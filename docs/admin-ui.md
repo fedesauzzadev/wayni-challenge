@@ -31,7 +31,7 @@ El script ([`scripts/setup.mjs`](../scripts/setup.mjs)) crea `.env` desde `.env.
 ## Pestañas
 
 1. **Archivo** — última carga del archivo de deudores (estado, líneas, duración, job, source) vía `GET /imports/latest` del ingestion; upload con progreso en 2 fases (ver abajo) con selector de destino: entrega directa al dir compartido del ingestion (default) o subida a S3; alta/baja de emails de notificación. El upload acepta además los archivos de referencia opcionales `Maeent.txt` (maestro de entidades) y `Nomdeu.txt` (nomenclador): el pipeline los busca junto al archivo de deudores, así que hay que incluirlos la primera vez (o cuando cambien) — después quedan junto al source por periodo.
-2. **Deudores** — grilla paginada del backend (`GET /deudores` con `offset`/`limit`, total y navegación de páginas; respeta `Query:TopMax`).
+2. **Deudores** — grilla paginada del backend (`GET /deudores` con `offset`/`limit`, total y navegación de páginas; respeta `Query:TopMax`) con filtro por situación máxima (`situacionMaxima=`, las situaciones BCRA ordenadas por severidad).
 3. **Entidades** — grilla de entidades del import activo (código, nombre, `sumaTotalPrestamos`) con filtro por código vía `GET /entidades?codigo=`, más totales generales de `GET /totales`.
 
 ## Flujo del upload con progreso
@@ -56,7 +56,7 @@ Tabla Postgres `notification_recipient` (migración `005_notification_recipients
 | `GET /api/imports/latest` | ingestion `GET /imports/latest` | 404 upstream → `{latest: null}` (empty state) |
 | `POST /api/imports/upload` | `DATA_DIR` o S3 + ingestion `POST /imports` | multipart `file` + `periodo` (yyyyMM, default mes corriente) + opcionales `maeent`/`nomdeu` + `storage` (`local` \| `s3`, default `s3` si viene vacío; la UI manda `local` por defecto); agrega `X-Api-Key` |
 | `GET /api/imports/:id` | ingestion `GET /imports/{id}` | Polling de estado |
-| `GET /api/deudores?offset&limit&top&omitirSinNombre` | query `GET /deudores` | Envelope con `total` |
+| `GET /api/deudores?offset&limit&top&omitirSinNombre&situacionMaxima` | query `GET /deudores` | Envelope con `total` (respeta el filtro de situación en el conteo) |
 | `GET /api/entidades?codigo=` | query `GET /entidades` | Filtro exacto/parcial por código |
 | `GET /api/totales` | query `GET /totales` | Totales del import activo |
 | `GET/POST/DELETE /api/notification-recipients` | Postgres | CRUD de destinatarios |

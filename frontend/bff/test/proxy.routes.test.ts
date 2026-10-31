@@ -17,6 +17,16 @@ describe("GET /api/deudores", () => {
     expect(upstream.deudoresQueries).toEqual(["offset=50&limit=50"]);
   });
 
+  it("forwards situacionMaxima junto a la paginación", async () => {
+    const { app, upstream } = buildTestApp();
+    upstream.deudoresResponse = { status: 200, body: { total: 2, offset: 0, limit: 25, items: [] } };
+
+    const response = await request(app).get("/api/deudores?offset=0&limit=25&situacionMaxima=5");
+
+    expect(response.status).toBe(200);
+    expect(upstream.deudoresQueries).toEqual(["offset=0&limit=25&situacionMaxima=5"]);
+  });
+
   it("ignora parámetros desconocidos", async () => {
     const { app, upstream } = buildTestApp();
 

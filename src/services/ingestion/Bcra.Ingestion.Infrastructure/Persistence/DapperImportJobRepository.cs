@@ -84,6 +84,24 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         return row?.ToDomain();
     }
 
+    public async Task<ImportJobTotals?> GetTotalsAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        var command = new CommandDefinition(
+            """
+            SELECT deudores_count::bigint AS deudores_count,
+                   entidades_count::bigint AS entidades_count,
+                   suma_total AS suma_total
+            FROM import_job
+            WHERE id = @Id
+            """,
+            new { Id = id },
+            cancellationToken: cancellationToken);
+
+        var row = await connection.QuerySingleOrDefaultAsync<TotalsRow>(command);
+        return row is null ? null : new ImportJobTotals(row.DeudoresCount, row.EntidadesCount, row.SumaTotal);
+    }
+
     public async Task SaveAsync(ImportJob job, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
@@ -469,6 +487,13 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
             new { Cuits = cuits.ToArray(), Nombres = nombres.ToArray() },
             cancellationToken: cancellationToken);
         return connection.ExecuteAsync(command);
+    }
+
+    private sealed class TotalsRow
+    {
+        public long DeudoresCount { get; set; }
+        public long EntidadesCount { get; set; }
+        public decimal SumaTotal { get; set; }
     }
 
     private sealed class ImportJobRow

@@ -75,6 +75,9 @@ public sealed partial class EmailNotifier(
         Lineas procesadas: {importCompleted.LinesProcessed}
         Lineas rechazadas: {importCompleted.LinesRejected}
         Registros de control descartados (marcador 98/99): {importCompleted.LinesSkippedControl}
+        Deudores: {importCompleted.TotalDeudores.ToString(CultureInfo.InvariantCulture)}
+        Entidades: {importCompleted.TotalEntidades.ToString(CultureInfo.InvariantCulture)}
+        Suma total de prestamos: {importCompleted.SumaTotalPrestamos.ToString(CultureInfo.InvariantCulture)}
         Duracion: {importCompleted.DurationMs.ToString(CultureInfo.InvariantCulture)} ms
         Completado (UTC): {importCompleted.CompletedAtUtc:O}
         """;
