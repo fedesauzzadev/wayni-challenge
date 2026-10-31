@@ -28,9 +28,74 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     /// <summary>Lote de upsert de archivos de referencia (Maeent.txt/Nomdeu.txt).</summary>
     private const int ReferenceUpsertBatchSize = 5000;
 
+    /// <summary>
+    /// Intento máximo de resolución de un upload duplicado: la fila existente puede desaparecer
+    /// entre el INSERT y el SELECT FOR UPDATE cuando otro duplicado concurrente reemplaza un
+    /// job terminal; el reintento del INSERT colisiona entonces con la fila nueva y la devuelve.
+    /// </summary>
+    private const int MaxDuplicateResolutionAttempts = 3;
+
     public async Task<(ImportJob Job, bool AlreadyExisted)> AddOrGetExistingAsync(ImportJob job, CancellationToken cancellationToken)
     {
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
+
+        for (var attempt = 1; ; attempt++)
+        {
+            if (await InsertJobAsync(connection, job, transaction: null, cancellationToken) > 0)
+                return (job, false);
+
+            using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+            try
+            {
+                var select = new CommandDefinition(
+                    $"""
+                    SELECT {SelectColumns} FROM import_job
+                    WHERE source = @Source AND etag IS NOT DISTINCT FROM @Etag AND periodo IS NOT DISTINCT FROM @Periodo
+                    FOR UPDATE;
+                    """,
+                    new { job.Source, job.Etag, job.Periodo },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken);
+                var row = await connection.QuerySingleOrDefaultAsync<ImportJobRow>(select);
+
+                if (row is null)
+                {
+                    if (attempt >= MaxDuplicateResolutionAttempts)
+                        throw new InvalidOperationException(
+                            $"Could not resolve a duplicate import request for source '{job.Source}' after {MaxDuplicateResolutionAttempts} attempts.");
+
+                    await transaction.CommitAsync(cancellationToken);
+                    continue;
+                }
+
+                if (await IsReusableAsync(connection, transaction, row, cancellationToken))
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return (row.ToDomain(), true);
+                }
+
+                await ReplaceTerminalJobAsync(connection, transaction, row.Id, job, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return (job, false);
+            }
+            catch
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // La conexión ya está rota: la transacción cae con ella.
+                }
+
+                throw;
+            }
+        }
+    }
+
+    private static Task<int> InsertJobAsync(DbConnection connection, ImportJob job, DbTransaction? transaction, CancellationToken cancellationToken)
+    {
         var command = new CommandDefinition(
             """
             INSERT INTO import_job (id, source, etag, size, periodo, status, created_at)
@@ -47,18 +112,66 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                 Status = job.Status.ToString(),
                 CreatedAt = job.CreatedAtUtc
             },
+            transaction: transaction,
             cancellationToken: cancellationToken);
 
-        var inserted = await connection.ExecuteAsync(command);
-        if (inserted > 0)
-            return (job, false);
+        return connection.ExecuteAsync(command);
+    }
 
-        var existing = new CommandDefinition(
-            $"SELECT {SelectColumns} FROM import_job WHERE source = @Source AND etag IS NOT DISTINCT FROM @Etag AND periodo IS NOT DISTINCT FROM @Periodo LIMIT 1",
-            new { job.Source, job.Etag, job.Periodo },
+    /// <summary>
+    /// El job existente se reutiliza (idempotencia del upload) si está en curso o si es el
+    /// import publicado en <c>active_import</c>: en ambos casos el duplicado es un no-op.
+    /// Un terminal NO publicado se descarta: el Completed cuyos agregados fueron limpiados
+    /// por el swap de un import posterior (sus datos ya no existen) y el Failed definitivo.
+    /// </summary>
+    private static async Task<bool> IsReusableAsync(DbConnection connection, DbTransaction transaction, ImportJobRow row, CancellationToken cancellationToken)
+    {
+        var status = Enum.Parse<ImportJobStatus>(row.Status);
+        if (status is not (ImportJobStatus.Completed or ImportJobStatus.Failed))
+            return true;
+
+        if (status == ImportJobStatus.Failed)
+            return false;
+
+        var activeCommand = new CommandDefinition(
+            $"SELECT import_id FROM active_import WHERE id = {SingletonImportRowId};",
+            transaction: transaction,
             cancellationToken: cancellationToken);
-        var row = await connection.QuerySingleAsync<ImportJobRow>(existing);
-        return (row.ToDomain(), true);
+        var activeId = await connection.QuerySingleOrDefaultAsync<Guid?>(activeCommand);
+        return activeId == row.Id;
+    }
+
+    /// <summary>
+    /// Descarta el job terminal no publicado dentro de la transacción que tiene su fila
+    /// bloqueada: limpia el storage residual (partición de staging, índices parciales y
+    /// agregados que un cleanup incompleto pudo dejar) y borra la fila, liberando el tuple
+    /// (source, etag, periodo) para la corrida nueva que se inserta a continuación.
+    /// </summary>
+    private static async Task ReplaceTerminalJobAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        Guid doomedJobId,
+        ImportJob replacement,
+        CancellationToken cancellationToken)
+    {
+        var cleanup = new CommandDefinition(
+            BuildImportStorageCleanupSql(doomedJobId),
+            new { ImportId = doomedJobId },
+            commandTimeout: IndefiniteCommandTimeout,
+            transaction: transaction,
+            cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(cleanup);
+
+        var delete = new CommandDefinition(
+            "DELETE FROM import_job WHERE id = @Id;",
+            new { Id = doomedJobId },
+            transaction: transaction,
+            cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(delete);
+
+        if (await InsertJobAsync(connection, replacement, transaction, cancellationToken) == 0)
+            throw new InvalidOperationException(
+                $"Failed to insert the replacement import for source '{replacement.Source}'; resolve the duplicate and retry.");
     }
 
     public async Task<ImportJob?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
@@ -385,21 +498,26 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         if (active == importId)
             throw new InvalidOperationException($"Refusing to drop storage of the active import '{importId}'.");
 
-        var hex = Hex(importId);
-        var staging = PartitionName("debt_staging", importId);
         var command = new CommandDefinition(
-            $"""
-            DROP TABLE IF EXISTS {staging};
+            BuildImportStorageCleanupSql(importId),
+            new { ImportId = importId },
+            commandTimeout: IndefiniteCommandTimeout,
+            cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
+    /// <summary>Limpieza del storage de un import: partición de staging, índices parciales y agregados.</summary>
+    private static string BuildImportStorageCleanupSql(Guid importId)
+    {
+        var hex = Hex(importId);
+        return $"""
+            DROP TABLE IF EXISTS {PartitionName("debt_staging", importId)};
             DROP INDEX IF EXISTS ix_deudor_agg_{hex}_cuit;
             DROP INDEX IF EXISTS ix_deudor_agg_{hex}_ranking;
             DROP INDEX IF EXISTS ix_entidad_agg_{hex}_entidad;
             DELETE FROM deudor_agg WHERE import_id = @ImportId;
             DELETE FROM entidad_agg WHERE import_id = @ImportId;
-            """,
-            new { ImportId = importId },
-            commandTimeout: IndefiniteCommandTimeout,
-            cancellationToken: cancellationToken);
-        await connection.ExecuteAsync(command);
+            """;
     }
 
     public async Task<IReadOnlyDictionary<string, int>> CountByStatusAsync(CancellationToken cancellationToken)
