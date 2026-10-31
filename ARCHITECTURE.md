@@ -46,6 +46,7 @@ Pipeline ELT de deudores bancarios con 3 microservicios (.NET 10, minimal APIs) 
 - [ADR-008 — Sin lock distribuido](docs/adr/ADR-008-sin-lock-distribuido.md)
 - [ADR-009 — Observabilidad con OpenTelemetry](docs/adr/ADR-009-observabilidad-opentelemetry.md)
 - [ADR-010 — Notifier at-least-once con Idempotency-Key declarativa](docs/adr/ADR-010-notifier-at-least-once-webhook.md)
+- [ADR-011 — Tuning de configuración sin paralelizar el pipeline](docs/adr/ADR-011-tuning-sin-paralelizar-import.md)
 
 ## Tests
 

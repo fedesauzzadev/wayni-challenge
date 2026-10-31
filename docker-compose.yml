@@ -7,6 +7,21 @@ services:
     # VACUUM paralelo (post-import) usa dynamic shared memory: el default de 64MB de /dev/shm
     # hace fallar el VACUUM (ANALYZE) sobre tablas de ~20M filas con "No space left on device".
     shm_size: 1gb
+    # Tuning de bulk-load del pipeline de import (mediciones y decisión en ADR-011): con los
+    # defaults el GROUP BY de ~20M grupos spillea (work_mem 4MB), los CREATE INDEX ordenan en
+    # disco (maintenance_work_mem 64MB) y un bulk que genera varios GB de WAL dispara
+    # checkpoints cada ~1GB (max_wal_size). El work_mem de la agregación NO va acá: es
+    # session-scoped en AggregateImportAsync para no afectar otras queries.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - max_parallel_maintenance_workers=4
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bcra}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env before starting}

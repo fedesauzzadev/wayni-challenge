@@ -29,6 +29,21 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     private const int ReferenceUpsertBatchSize = 5000;
 
     /// <summary>
+    /// work_mem de la sesión de agregación: el GROUP BY de ~20M grupos distintos con el default
+    /// de 4MB spillea a disco (la tabla hash completa necesita ~2-3GB). Session-scoped (Npgsql
+    /// resetea la sesión al devolver la conexión al pool) y consumido por un único nodo de
+    /// agregación, por lo que la demanda real acota a ~1× este valor — ver ADR-011.
+    /// </summary>
+    private const string AggregationWorkMem = "2GB";
+
+    /// <summary>
+    /// maintenance_work_mem de la sesión de creación de índices: el sort de los CREATE INDEX con
+    /// el default de 64MB es externo (disco). Session-scoped, mismo criterio que
+    /// <see cref="AggregationWorkMem"/> — ver ADR-011.
+    /// </summary>
+    private const string IndexMaintenanceWorkMem = "512MB";
+
+    /// <summary>
     /// Intento máximo de resolución de un upload duplicado: la fila existente puede desaparecer
     /// entre el INSERT y el SELECT FOR UPDATE cuando otro duplicado concurrente reemplaza un
     /// job terminal; el reintento del INSERT colisiona entonces con la fila nueva y la devuelve.
@@ -399,6 +414,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     {
         var staging = PartitionName("debt_staging", importId);
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync($"SET work_mem = '{AggregationWorkMem}';");
         using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var command = new CommandDefinition(
             $"""
@@ -444,6 +460,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     {
         var hex = Hex(importId);
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync($"SET maintenance_work_mem = '{IndexMaintenanceWorkMem}';");
         var command = new CommandDefinition(
             $"""
             CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
