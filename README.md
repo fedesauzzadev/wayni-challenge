@@ -94,14 +94,17 @@ Medición con el dataset real de muestra (`samples/deudores.txt`, ~5.9 GB, 34,38
 | Swap de `active_import` | 0.03 s | Transacción corta con `FOR UPDATE` |
 | **End-to-end** | **~689 s (~11.5 min)** | Con defaults de Postgres: ~974 s (~16 min) — **−29 %** por el tuning |
 
+> **Post-ADR-013** (paralelismo del GROUP BY vía CTAS con 4 workers, índices concurrentes, PG17.5 + `wal_compression=lz4` + `synchronous_commit=off` dev): medido con el dataset real **624 s (10:24)** en la segunda corrida — agregación 298.9→230.4 s, staging sin cambio (~256 s: el upload web entrega por bind mount a ~80 MB/s y LocalStack S3 tampoco es más rápido), índices +8.6 s (ruido de VM compartida). Se cierra la optimización en este punto — el detalle de palancas restantes rechazadas y del piso de ~9 min está en [ADR-013](docs/adr/ADR-013-paralelismo-ctas-tuning-infra.md).
+
 Config usada (defaults en `.env.example` / compose): `Ingestion__BatchSize=200000` (172 lotes de 200k: tasa estable, sin presión de memoria), `MaxPoolSize=50`, `Max Auto Prepare=16` en el connection string de ingestion.
 
-Tuning aplicado justificado por la medición ([ADR-011](docs/adr/ADR-011-tuning-sin-paralelizar-import.md)):
+Tuning aplicado justificado por la medición ([ADR-011](docs/adr/ADR-011-tuning-sin-paralelizar-import.md), ampliado en [ADR-013](docs/adr/ADR-013-paralelismo-ctas-tuning-infra.md)):
 
 - `CommandTimeout=0` en los comandos pesados (`AggregateImportAsync`, `CreateImportIndexesAsync`, `DropImportStorageAsync`): el default de Npgsql (30 s) es menor que las fases medidas — sin esto, el import del dataset real entraba en loop de takeover (timeout → `DbException` → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.
-- Postgres fuera de defaults (compose): `shared_buffers=512MB`, `max_wal_size=4GB`, `checkpoint_timeout=15min`, `max_parallel_maintenance_workers=4` — con defaults, checkpoints cada ~1GB de WAL en un bulk que genera varios GB, e index build sin memoria ni paralelismo.
-- `SET` sessionales en el repositorio: `work_mem='2GB'` en la agregación (la tabla hash de ~20M de grupos necesita ~2-3 GB; con 4 MB de default spillea toda a disco) y `maintenance_work_mem='512MB'` en la creación de índices. Session-scoped: mueren con la conexión al volver al pool.
+- Postgres fuera de defaults (compose, `postgres:17.5-alpine`): `shared_buffers=512MB`, `max_wal_size=8GB`, `checkpoint_timeout=30min`, `wal_compression=lz4`, `synchronous_commit=off` (dev), `max_parallel_maintenance_workers=4` — con defaults, checkpoints cada ~1GB de WAL en un bulk que genera varios GB, full-page images sin comprimir, fsync por cada commit de lote e index build sin memoria ni paralelismo. Venir de 16.x exige reprovisionar: `docker volume rm bcra-microservices_pgdata` (las migraciones recrean el esquema al arranque).
+- `SET` sessionales en el repositorio: la agregación corre `work_mem='2GB'` + costos paralelos bajos y materializa el GROUP BY con `CREATE UNLOGGED TABLE` paralelo antes del append (el `INSERT ... SELECT` directo es serial en Postgres: benchmark −38 % en la fase, ADR-013); la creación de índices usa `maintenance_work_mem='2GB'` con los 3 `CREATE INDEX` en conexiones concurrentes. Session-scoped: mueren con la conexión al volver al pool.
 - Batch size 200k y pool 50 se mantienen: la medición no muestra cuello de botella del lado .NET (el limiter es Postgres en la agregación).
+- Archivo fuente grande en volumen nativo: `node scripts/stage-source.mjs <archivo>` lo copia a `/data-vol` (el bind mount de Windows sirve ~80 MB/s; el volumen, a velocidad de disco del VM) — ADR-013.
 
 ## Datos de muestra
 

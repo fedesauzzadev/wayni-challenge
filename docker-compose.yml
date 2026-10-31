@@ -2,24 +2,34 @@ name: bcra-microservices
 
 services:
   postgres:
-    image: postgres:16.4-alpine
+    # PG17 por el streaming I/O de seq scans (automático, sin GUC): la agregación y los índices
+    # escanean varias veces los ~2.5 GB de staging — ADR-013. Requiere reprovisionar pgdata
+    # (docker volume rm bcra-microservices_pgdata) al venir de 16.x.
+    image: postgres:17.5-alpine
     container_name: bcra-postgres
     # VACUUM paralelo (post-import) usa dynamic shared memory: el default de 64MB de /dev/shm
     # hace fallar el VACUUM (ANALYZE) sobre tablas de ~20M filas con "No space left on device".
     shm_size: 1gb
-    # Tuning de bulk-load del pipeline de import (mediciones y decisión en ADR-011): con los
-    # defaults el GROUP BY de ~20M grupos spillea (work_mem 4MB), los CREATE INDEX ordenan en
-    # disco (maintenance_work_mem 64MB) y un bulk que genera varios GB de WAL dispara
-    # checkpoints cada ~1GB (max_wal_size). El work_mem de la agregación NO va acá: es
-    # session-scoped en AggregateImportAsync para no afectar otras queries.
+    # Tuning de bulk-load del pipeline de import (mediciones y decisión en ADR-011/ADR-013):
+    # shared_buffers y checkpoint pacing para el bulk (max_wal_size/checkpoint_timeout),
+    # wal_compression=lz4 recorta los full-page images del WAL que genera cargar ~4 GB por
+    # import y synchronous_commit=off elimina el fsync de los 172 commits de lote (seguro para
+    # el protocolo: lote+checkpoint se pierden juntos, el takeover retoma del checkpoint
+    # anterior — solo aceptable en dev). El streaming I/O de seq scans de PG17 no requiere GUC.
+    # El work_mem/maintenance_work_mem de las fases largas NO van acá: son session-scoped en
+    # DapperImportJobRepository para no afectar otras queries.
     command:
       - postgres
       - -c
       - shared_buffers=512MB
       - -c
-      - max_wal_size=4GB
+      - max_wal_size=8GB
       - -c
-      - checkpoint_timeout=15min
+      - checkpoint_timeout=30min
+      - -c
+      - wal_compression=lz4
+      - -c
+      - synchronous_commit=off
       - -c
       - max_parallel_maintenance_workers=4
     environment:
@@ -67,7 +77,7 @@ services:
       Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-bcra};Username=${POSTGRES_USER:-bcra};Password=${POSTGRES_PASSWORD};MaxPoolSize=${DATABASE_MAXPOOLSIZE:-50};Max Auto Prepare=${DATABASE_MAXAUTOPREPARE:-16}"
       Database__ReadonlyPassword: ${POSTGRES_READONLY_PASSWORD}
       Ingestion__BatchSize: ${INGESTION_BATCH_SIZE:-200000}
-      Ingestion__AllowedSourceDirs: "/data"
+      Ingestion__AllowedSourceDirs: "/data,/data-vol"
       Ingestion__AllowedS3Buckets: ${S3_BUCKET:-bcra-local}
       Sqs__ImportCompletedQueueUrl: ${SQS_IMPORT_COMPLETED_URL:-}
       Upload__ApiKey: ${UPLOAD_API_KEY}
@@ -79,6 +89,11 @@ services:
       - "${INGESTION_API_PORT:-18080}:8080"
     volumes:
       - ${DATA_DIR:-./samples}:/data:ro
+      # Volumen nativo del VM para el archivo grande: el bind mount de Windows sirve /data a
+      # ~80 MB/s medidos (5.6 GB ≈ 69 s solo de lectura), el volumen a velocidad de disco del VM.
+      # Se carga con scripts/stage-source.mjs (docker cp) — ADR-013. rw porque docker cp escribe
+      # a través del filesystem del contenedor.
+      - source-data:/data-vol
     depends_on:
       postgres:
         condition: service_healthy
@@ -185,6 +200,7 @@ services:
 
 volumes:
   pgdata:
+  source-data:
   localstack-data:
   prometheus-data:
   grafana-data:

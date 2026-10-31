@@ -48,6 +48,7 @@ Pipeline ELT de deudores bancarios con 3 microservicios (.NET 10, minimal APIs) 
 - [ADR-010 — Notifier at-least-once con Idempotency-Key declarativa](docs/adr/ADR-010-notifier-at-least-once-webhook.md)
 - [ADR-011 — Tuning de configuración sin paralelizar el pipeline](docs/adr/ADR-011-tuning-sin-paralelizar-import.md)
 - [ADR-012 — Pre-agregación en RAM, staging UNLOGGED y más memoria: consideradas y rechazadas](docs/adr/ADR-012-preagregacion-en-ram-y-unlogged-rechazadas.md)
+- [ADR-013 — Paralelismo del GROUP BY vía CTAS, índices concurrentes y tuning de infraestructura](docs/adr/ADR-013-paralelismo-ctas-tuning-infra.md)
 
 ## Tests
 

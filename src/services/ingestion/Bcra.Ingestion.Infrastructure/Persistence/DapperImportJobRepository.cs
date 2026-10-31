@@ -29,7 +29,7 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     private const int ReferenceUpsertBatchSize = 5000;
 
     /// <summary>
-    /// work_mem de la sesión de agregación: el GROUP BY de ~20M grupos distintos con el default
+    /// work_mem de la sesión de agregación: el GROUP BY de ~20M de grupos distintos con el default
     /// de 4MB spillea a disco (la tabla hash completa necesita ~2-3GB). Session-scoped (Npgsql
     /// resetea la sesión al devolver la conexión al pool) y consumido por un único nodo de
     /// agregación, por lo que la demanda real acota a ~1× este valor — ver ADR-011.
@@ -37,11 +37,23 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
     private const string AggregationWorkMem = "2GB";
 
     /// <summary>
-    /// maintenance_work_mem de la sesión de creación de índices: el sort de los CREATE INDEX con
-    /// el default de 64MB es externo (disco). Session-scoped, mismo criterio que
-    /// <see cref="AggregationWorkMem"/> — ver ADR-011.
+    /// Workers paralelos del scan de agregación: el <c>INSERT ... SELECT ... GROUP BY</c> directo
+    /// nunca genera plan paralelo en PostgreSQL (el nodo ModifyTable lo prohíbe), pero el mismo
+    /// GROUP BY como <c>CREATE TABLE AS</c> sí — verificado con EXPLAIN. Con ~20M de grupos sobre
+    /// ~34M de filas (grupos ≈ filas) el planner elige serial salvo que se bajen los costos
+    /// paralelos de esta sesión: benchmark a mitad de escala (17.2M filas / 10M grupos) dio
+    /// 211.9 s serial vs 71.9 s con scan paralelo de 4 workers + hash agg en el leader (ADR-013).
     /// </summary>
-    private const string IndexMaintenanceWorkMem = "512MB";
+    private const int AggregationParallelWorkers = 4;
+
+    /// <summary>
+    /// maintenance_work_mem de la sesión de creación de índices: los sorts de los CREATE INDEX
+    /// sobre ~20M de filas (el de ranking arrastra <c>numeric</c>, el más pesado) exceden los
+    /// 512 MB anteriores y caían a merge externo. Session-scoped, mismo criterio que
+    /// <see cref="AggregationWorkMem"/>; la VM de 15.5 GB cubre los 3 builds concurrentes —
+    /// ver ADR-011/ADR-013.
+    /// </summary>
+    private const string IndexMaintenanceWorkMem = "2GB";
 
     /// <summary>
     /// Intento máximo de resolución de un upload duplicado: la fila existente puede desaparecer
@@ -410,26 +422,54 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         await LoadDeudoresNombresAsync(connection, nombres, cancellationToken);
     }
 
+    /// <summary>
+    /// Agregación en dos pasos por import: (1) <c>CREATE UNLOGGED TABLE ... AS SELECT ... GROUP BY</c>
+    /// hacia tablas temporarias por import — la única forma de que PostgreSQL paralelice el scan
+    /// del GROUP BY, porque el <c>INSERT ... SELECT</c> directo corre serial — y (2) append de esas
+    /// tablas a <c>deudor_agg</c>/<c>entidad_agg</c>. Todo dentro de la MISMA transacción READ
+    /// COMMITTED de siempre: idempotente por los <c>DELETE</c> previos (un retry en Aggregating
+    /// reemplaza los agregados parciales), y las temporarias son transaccionales (un crash las
+    /// desaparece junto con su contenido) — ver ADR-013.
+    /// </summary>
     public async Task AggregateImportAsync(Guid importId, string situacionExpression, CancellationToken cancellationToken)
     {
         var staging = PartitionName("debt_staging", importId);
+        var deudoresTmp = $"agg_tmp_deudor_{Hex(importId)}";
+        var entidadesTmp = $"agg_tmp_entidad_{Hex(importId)}";
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync($"SET work_mem = '{AggregationWorkMem}';");
+        await connection.ExecuteAsync(
+            $"SET work_mem = '{AggregationWorkMem}'; " +
+            $"SET max_parallel_workers_per_gather = {AggregationParallelWorkers}; " +
+            "SET parallel_setup_cost = 0; SET parallel_tuple_cost = 0.001;");
         using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         var command = new CommandDefinition(
             $"""
             DELETE FROM deudor_agg WHERE import_id = @ImportId;
             DELETE FROM entidad_agg WHERE import_id = @ImportId;
 
-            INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total)
-            SELECT import_id, cuit, {situacionExpression}, SUM(monto)
+            DROP TABLE IF EXISTS {deudoresTmp};
+            DROP TABLE IF EXISTS {entidadesTmp};
+
+            CREATE UNLOGGED TABLE {deudoresTmp} AS
+            SELECT import_id, cuit, {situacionExpression} AS situacion_maxima, SUM(monto) AS suma_total
             FROM {staging}
             GROUP BY import_id, cuit;
 
-            INSERT INTO entidad_agg (import_id, codigo_entidad, suma_total)
-            SELECT import_id, entidad, SUM(monto)
+            INSERT INTO deudor_agg (import_id, cuit, situacion_maxima, suma_total)
+            SELECT import_id, cuit, situacion_maxima, suma_total
+            FROM {deudoresTmp};
+
+            CREATE UNLOGGED TABLE {entidadesTmp} AS
+            SELECT import_id, entidad AS codigo_entidad, SUM(monto) AS suma_total
             FROM {staging}
             GROUP BY import_id, entidad;
+
+            INSERT INTO entidad_agg (import_id, codigo_entidad, suma_total)
+            SELECT import_id, codigo_entidad, suma_total
+            FROM {entidadesTmp};
+
+            DROP TABLE {deudoresTmp};
+            DROP TABLE {entidadesTmp};
 
             UPDATE import_job SET
                 deudores_count = (SELECT COUNT(*) FROM deudor_agg WHERE import_id = @ImportId),
@@ -456,20 +496,25 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
         await connection.ExecuteAsync(command);
     }
 
+    /// <summary>
+    /// Los tres CREATE INDEX corren en conexiones concurrentes en lugar de secuencialmente en una
+    /// sola sesión: los sorts de ~20M de filas reparten los cores de la VM (ADR-013). Sigue siendo
+    /// idempotente por el IF NOT EXISTS: un intento interrumpido deja solo los índices completados
+    /// y el takeover crea los que faltan.
+    /// </summary>
     public async Task CreateImportIndexesAsync(Guid importId, CancellationToken cancellationToken)
     {
         var hex = Hex(importId);
+        var indexStatements = new[]
+        {
+            $"CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}'",
+            $"CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_ranking ON deudor_agg (suma_total DESC, cuit ASC) WHERE import_id = '{importId}'",
+            $"CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}'"
+        };
+
+        await Task.WhenAll(indexStatements.Select(statement => CreateIndexAsync(statement, cancellationToken)));
+
         using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync($"SET maintenance_work_mem = '{IndexMaintenanceWorkMem}';");
-        var command = new CommandDefinition(
-            $"""
-            CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_cuit ON deudor_agg (cuit) WHERE import_id = '{importId}';
-            CREATE INDEX IF NOT EXISTS ix_deudor_agg_{hex}_ranking ON deudor_agg (suma_total DESC, cuit ASC) WHERE import_id = '{importId}';
-            CREATE INDEX IF NOT EXISTS ix_entidad_agg_{hex}_entidad ON entidad_agg (codigo_entidad) WHERE import_id = '{importId}';
-            """,
-            commandTimeout: IndefiniteCommandTimeout,
-            cancellationToken: cancellationToken);
-        await connection.ExecuteAsync(command);
 
         // VACUUM no puede ejecutarse dentro del batch implícito multi-statement de Npgsql:
         // una ejecución por sentencia. Marca las filas nuevas como all-visible (index-only
@@ -482,6 +527,17 @@ public sealed class DapperImportJobRepository(IDbConnectionFactory connectionFac
                 cancellationToken: cancellationToken);
             await connection.ExecuteAsync(vacuum);
         }
+    }
+
+    private async Task CreateIndexAsync(string statement, CancellationToken cancellationToken)
+    {
+        using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync($"SET maintenance_work_mem = '{IndexMaintenanceWorkMem}';");
+        var command = new CommandDefinition(
+            statement,
+            commandTimeout: IndefiniteCommandTimeout,
+            cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
     }
 
     public async Task<Guid?> SwapActiveImportAsync(Guid importId, CancellationToken cancellationToken)
