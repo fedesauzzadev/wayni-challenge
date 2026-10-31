@@ -32,7 +32,9 @@ dotnet test tests/unit/Bcra.Ingestion.Domain.Tests
 dotnet test tests/unit/Bcra.Ingestion.Application.Tests
 dotnet test tests/unit/Bcra.Ingestion.Infrastructure.Tests
 dotnet test tests/unit/Bcra.Notifier.Application.Tests
+dotnet test tests/unit/Bcra.Shared.Domain.Tests
 dotnet test tests/integration/Bcra.Ingestion.IntegrationTests   # requiere Docker (Testcontainers)
+dotnet test tests/integration/Bcra.Query.IntegrationTests       # requiere Docker (Testcontainers)
 
 docker compose up -d --build                                    # stack completo con LocalStack + Prometheus + Grafana
 docker compose exec localstack awslocal sqs list-queues         # cola import-completed
@@ -52,7 +54,7 @@ Al levantar el compose, `localstack/init/01-init.sh` crea el bucket `S3_BUCKET` 
 
 ### Interfaz de administración
 
-`npm run setup` desde la raíz levanta todo (stack docker + BFF Node + web React) y abre el browser en http://localhost:5173. Tres pestañas: **Archivo** (última carga, upload con progreso en 2 fases — subida a S3 + procesamiento del import, con `Maeent.txt`/`Nomdeu.txt` opcionales — y gestión de emails de notificación), **Deudores** (grilla paginada por el backend con filtro por situación máxima; el ranking top-N también va por API con `GET /deudores/top/{n}`) y **Entidades** (grilla con filtro por código + totales). Detalle: [docs/admin-ui.md](docs/admin-ui.md).
+`npm run setup` desde la raíz levanta todo (stack docker + BFF Node + web React) y abre el browser en http://localhost:5173. Tres pestañas: **Archivo** (última carga, upload con progreso en 2 fases — entrega del archivo, directa o vía S3, + procesamiento del import; `Maeent.txt`/`Nomdeu.txt` opcionales pero **por periodo**: incluilos la primera vez que se cargue un periodo o el import falla — la UI advierte si faltan — y gestión de emails de notificación), **Deudores** (grilla paginada por el backend con filtro por situación máxima; el ranking top-N también va por API con `GET /deudores/top/{n}`) y **Entidades** (grilla con filtro por código + totales). Detalle: [docs/admin-ui.md](docs/admin-ui.md).
 
 ### Notificaciones por email
 

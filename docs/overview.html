@@ -170,7 +170,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <li><strong>Observabilidad integrada</strong>: OpenTelemetry en los 3 servicios, <code>/metrics</code> en formato Prometheus y dashboard de Grafana aprovisionado, sin setup manual.</li>
       <li><strong>Interfaz de administración incluida</strong>: web React + BFF (<code>npm run setup</code> levanta todo el entorno en un comando) para cargar el archivo con progreso en 2 fases, seguir el import en vivo, consultar deudores/entidades y gestionar los emails de notificación. Los secretos viven solo en el BFF.</li>
       <li><strong>Performance medida</strong> con el dataset real: end-to-end ≈ 689 s (~11,5 min) tras el tuning de bulk-load de ADR-011 (con defaults de Postgres: ~974 s / ~16 min, −29 %), con ~136.700 líneas válidas/s en la fase de staging.</li>
-      <li><strong>CI en GitHub Actions</strong>: build sin warnings + 278 tests (217 .NET entre unitarios y de integración con Testcontainers, más 61 del frontend con typecheck) en cada push y PR.</li>
+      <li><strong>CI en GitHub Actions</strong>: build sin warnings + 288 tests (226 .NET entre unitarios y de integración con Testcontainers, más 62 del frontend con typecheck) en cada push y PR.</li>
     </ul>
     <div class="stats">
       <div class="stat"><b>34.385.567</b><span>líneas del dataset de muestra (~5,9 GB)</span></div>
@@ -224,7 +224,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
 
 <section id="decisiones">
   <h2><span class="num">04</span>Decisiones clave</h2>
-  <p class="lead">Resumen de los ADRs 005–010 (detalle completo en <code>docs/adr/</code>).</p>
+  <p class="lead">Resumen de los ADRs 005–011 (detalle completo en <code>docs/adr/</code>).</p>
   <div class="adrs">
     <div class="adr">
       <span class="adr-id">ADR-005</span>
@@ -512,7 +512,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
     <table>
       <thead><tr><th style="width:15%">Pieza</th><th style="width:15%">Tecnología</th><th style="width:11%">Puerto(s)</th><th>Rol funcional</th><th style="width:16%">Depende de</th></tr></thead>
       <tbody>
-        <tr><td><code>postgres</code></td><td>PostgreSQL 16.4-alpine</td><td><code>:5544</code></td><td>Única fuente de verdad del sistema: staging, agregados, <code>active_import</code>, maestros de referencia y <code>notification_recipient</code>. <code>shm_size 1 gb</code> para el VACUUM paralelo post-import (~20 M de filas).</td><td>—</td></tr>
+        <tr><td><code>postgres</code></td><td>PostgreSQL 16.4-alpine</td><td><code>:5544</code></td><td>Única fuente de verdad del sistema: staging, agregados, <code>active_import</code>, maestros de referencia y <code>notification_recipient</code>. <code>shm_size 1 gb</code> para el VACUUM paralelo post-import (~20 M de filas) y tuning de bulk-load fuera de defaults (<a href="adr/ADR-011-tuning-sin-paralelizar-import.md">ADR-011</a>: <code>shared_buffers</code>, <code>max_wal_size</code>, <code>checkpoint_timeout</code>, index build paralelo).</td><td>—</td></tr>
         <tr><td><code>localstack</code></td><td>LocalStack 3.8.1 (sqs + s3)</td><td><code>:4566</code></td><td>AWS emulado: bucket <code>bcra-local</code> (uploads en modo S3) y cola <code>import-completed</code>. <code>init/01-init.sh</code> crea ambos de forma idempotente al arrancar.</td><td>—</td></tr>
         <tr><td><code>ingestion-api</code></td><td>.NET 10 · minimal API</td><td><code>:18080</code></td><td>Orquestador del pipeline: acepta <code>POST /imports</code> (API key), ejecuta el worker bajo lease (staging → agregación → índices → swap → cleanup), aplica las migraciones DbUp al arrancar y publica el evento de finalización. Monta <code>DATA_DIR</code> como <code>/data:ro</code>.</td><td>postgres (healthy)</td></tr>
         <tr><td><code>query-api</code></td><td>.NET 10 · minimal API</td><td><code>:18081</code></td><td>Read-model de consulta: deudores, entidades y totales del import activo. Conecta con el rol <code>bcra_readonly</code>; lecturas MVCC sin locks.</td><td>postgres + ingestion (migraciones)</td></tr>
@@ -545,7 +545,7 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
         <tr><td><code>/health/*</code> · <code>/metrics</code></td><td>Probes y métricas.</td></tr>
         <tr><td><strong>Notifier</strong><br><code>:18082</code></td><td><code>/health/ready</code> · <code>/metrics</code></td><td>Sin endpoints de negocio: es un consumidor de cola. El readiness incluye el chequeo de SQS.</td></tr>
         <tr><td rowspan="3"><strong>BFF</strong><br><code>:4000</code></td><td><code>GET /health</code></td><td>Liveness del BFF.</td></tr>
-        <tr><td><code>POST /api/imports/upload</code></td><td>Multipart (<code>file</code> + <code>periodo</code> + opcionales <code>maeent</code>/<code>nomdeu</code> + <code>storage=local|s3</code>): entrega el archivo y crea el import; agrega el <code>X-Api-Key</code> del lado server.</td></tr>
+        <tr><td><code>POST /api/imports/upload</code></td><td>Multipart (<code>file</code> + <code>periodo</code> + opcionales <code>maeent</code>/<code>nomdeu</code> + <code>storage=local|s3</code>): entrega el archivo y crea el import; agrega el <code>X-Api-Key</code> del lado server. El nombre del archivo es irrelevante para la deduplicación (source y etag se derivan del contenido); las referencias viven por periodo: incluilas la primera vez que se carga un periodo.</td></tr>
         <tr><td><code>GET /api/imports/latest</code> · <code>GET /api/imports/:id</code> · <code>GET /api/deudores</code> · <code>GET /api/entidades</code> · <code>GET /api/totales</code> · <code>GET/POST/DELETE /api/notification-recipients</code></td><td>Proxy fino hacia ingestion/query (404 upstream → <code>{latest:null}</code>) y CRUD de destinatarios sobre Postgres.</td></tr>
       </tbody>
     </table>
@@ -672,7 +672,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
     <div class="pre"><pre class="tree"><code>Wayni Challenge/
 ├── Bcra.Microservices.sln
 ├── docker-compose.yml          <span class="c"># postgres, localstack, 3 apis, mailpit, prometheus, grafana</span>
-├── .github/workflows/ci.yml    <span class="c"># CI: build + 217 tests .NET + 61 del frontend (2 jobs)</span>
+├── .github/workflows/ci.yml    <span class="c"># CI: build + 226 tests .NET + 62 del frontend (2 jobs)</span>
 ├── global.json                 <span class="c"># fija el SDK .NET 10</span>
 ├── .env.example                <span class="c"># configuración del entorno local</span>
 ├── src/
@@ -689,7 +689,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
 │   ├── unit/                   <span class="c"># 5 proyectos de tests unitarios</span>
 │   └── integration/            <span class="c"># ingestion + query (Testcontainers)</span>
 ├── docs/
-│   ├── adr/                    <span class="c"># ADR-001 .. ADR-010</span>
+      │   ├── adr/                    <span class="c"># ADR-001 .. ADR-011</span>
 │   ├── openapi/                <span class="c"># contratos OpenAPI generados en el build</span>
 │   ├── admin-ui.md             <span class="c"># detalle de la interfaz de administración</span>
 │   └── overview.html           <span class="c"># este documento</span>
@@ -705,7 +705,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       <li><code>tests/unit/Bcra.Shared.Domain.Tests</code> — contratos compartidos (<code>Result</code>, serialización del <code>ImportCompletedEvent</code>).</li>
       <li><code>tests/unit/Bcra.Notifier.Application.Tests</code> — manejo del mensaje (parseo, delete condicional, requeue por fallo), <code>WebhookNotifier</code> e <code>EmailNotifier</code>.</li>
       <li><code>tests/integration/Bcra.Query.IntegrationTests</code> — Testcontainers + PostgreSQL real: endpoints de consulta (por CUIT, top, entidades, totales) contra el import activo, paginación/<code>TopMax</code> y filtro por código de entidad.</li>
-      <li><strong>Frontend</strong> — <code>frontend/bff</code>: 30 tests con vitest + supertest (upload local/S3 con referencias, proxy, recipients, config); <code>frontend/web</code>: 27 tests con Testing Library (las 3 páginas, DataGrid con paginación, upload con progreso) + typecheck <code>tsc</code>. Ambos corren en la CI de GitHub Actions junto al build .NET sin warnings.</li>
+      <li><strong>Frontend</strong> — <code>frontend/bff</code>: 31 tests con vitest + supertest (upload local/S3 con referencias, proxy, recipients, config); <code>frontend/web</code>: 31 tests con Testing Library (las 3 páginas, DataGrid con paginación, upload con progreso, warning de referencias por periodo) + typecheck <code>tsc</code>. Ambos corren en la CI de GitHub Actions junto al build .NET sin warnings.</li>
       <li><code>tests/integration/Bcra.Ingestion.IntegrationTests</code> — Testcontainers + PostgreSQL real: (a) dos workers, un ganador; (b) uploads simultáneos → un solo job y una sola ejecución; (c) segundo import queda Pending mientras hay uno activo; (d) lecturas concurrentes al swap ven versión vieja o nueva, nunca mixta; (e) import completado publica <code>ImportCompletedEvent</code> con agregados y el fallo del publish no falla el import; (f) reanudación: takeover de Loading tras lease vencido completa sin duplicados, takeover de Aggregating re-agrega idempotente, fuente modificada → Failed.</li>
     </ul>
 
