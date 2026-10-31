@@ -340,6 +340,120 @@ UPDATE active_import SET import_id=@nuevo WHERE id=1;</pre>
   <p class="note">Sin FKs físicas deliberadamente: staging y agregados se crean/borran por <code>import_id</code> con DDL (DROP de particiones, índices parciales) — una FK obligaría a borrar en orden y acoplaría el cleanup. El query-service siempre filtra por el <code>import_id</code> de <code>active_import</code>.</p>
 </div>
 
+<h2>Del UI a la base: secuencia con traceo de punta a punta</h2>
+<div class="card">
+  <svg viewBox="0 0 1080 500" role="img" aria-label="Diagrama de secuencia del upload e import, desde el browser hasta PostgreSQL, SQS y notifier" style="width:100%;height:auto">
+    <defs>
+      <marker id="sq1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3c465c"/></marker>
+      <marker id="sq1d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a94aa"/></marker>
+      <marker id="sq1t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0f766e"/></marker>
+    </defs>
+    <g font-size="11" fill="#3c465c">
+      <!-- lifelines -->
+      <g>
+        <rect x="20"  y="10" width="120" height="34" rx="8" fill="#eef1f7" stroke="#64748b"/><text x="80"  y="31" text-anchor="middle" font-weight="700">Browser</text>
+        <rect x="180" y="10" width="110" height="34" rx="8" fill="#eef1f7" stroke="#64748b"/><text x="235" y="31" text-anchor="middle" font-weight="700">Web (Vite)</text>
+        <rect x="330" y="10" width="120" height="34" rx="8" fill="#eceafb" stroke="#4338ca"/><text x="390" y="31" text-anchor="middle" font-weight="700">BFF :4000</text>
+        <rect x="490" y="10" width="120" height="34" rx="8" fill="#e6f4f2" stroke="#0f766e"/><text x="550" y="31" text-anchor="middle" font-weight="700">Ingestion</text>
+        <rect x="640" y="10" width="100" height="34" rx="8" fill="#e6f4f2" stroke="#0f766e"/><text x="690" y="31" text-anchor="middle" font-weight="700">Worker</text>
+        <rect x="790" y="10" width="110" height="34" rx="8" fill="#fdf3e3" stroke="#b45309"/><text x="845" y="31" text-anchor="middle" font-weight="700">PostgreSQL</text>
+        <rect x="940" y="10" width="120" height="34" rx="8" fill="#fdeaea" stroke="#b91c1c"/><text x="1000" y="31" text-anchor="middle" font-weight="700">SQS+Notifier</text>
+        <line x1="80"  y1="44" x2="80"  y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="235" y1="44" x2="235" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="390" y1="44" x2="390" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="550" y1="44" x2="550" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="690" y1="44" x2="690" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="845" y1="44" x2="845" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+        <line x1="1000" y1="44" x2="1000" y2="490" stroke="#c9d2e2" stroke-dasharray="4 4"/>
+      </g>
+
+      <!-- 1: upload -->
+      <line x1="80" y1="76" x2="388" y2="76" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="234" y="70" text-anchor="middle" font-weight="600">1 · POST /api/imports/upload (multipart: file + periodo + refs + storage)</text>
+      <text x="234" y="90" text-anchor="middle" font-size="10" fill="#5b677f">vía proxy /api de Vite · onUploadProgress = fase (a) en la UI</text>
+
+      <!-- BFF self work -->
+      <rect x="300" y="104" width="180" height="30" rx="6" fill="#eceafb" stroke="#4338ca" stroke-width="1"/>
+      <text x="390" y="123" text-anchor="middle" font-size="10" fill="#4338ca">sha256 → etag · guarda uploads/&lt;periodo&gt;/</text>
+
+      <!-- 2: POST /imports -->
+      <line x1="390" y1="150" x2="548" y2="150" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="469" y="144" text-anchor="middle" font-weight="600">2 · POST /imports {source, etag, size, periodo}</text>
+      <text x="469" y="164" text-anchor="middle" font-size="10" fill="#5b677f">+ X-Api-Key + <tspan font-weight="700">X-Correlation-Id</tspan> ← nace acá (BFF)</text>
+
+      <!-- 3: idempotencia -->
+      <line x1="550" y1="192" x2="843" y2="192" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="696" y="186" text-anchor="middle" font-weight="600">3 · INSERT ... ON CONFLICT (source, etag, periodo)</text>
+      <line x1="845" y1="206" x2="552" y2="206" stroke="#8a94aa" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#sq1d)"/>
+      <text x="696" y="222" text-anchor="middle" font-size="10" fill="#5b677f">201 Created (job Pending) · 200 ya existía (alreadyExisted=true)</text>
+
+      <!-- 4: respuesta -->
+      <line x1="390" y1="246" x2="82" y2="246" stroke="#8a94aa" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#sq1d)"/>
+      <text x="234" y="240" text-anchor="middle" font-size="10.5">4 · { importId, status, alreadyExisted } — la UI empieza el polling</text>
+
+      <!-- 5: claim -->
+      <line x1="690" y1="276" x2="843" y2="276" stroke="#0f766e" stroke-width="1.5" marker-end="url(#sq1t)"/>
+      <text x="766" y="270" text-anchor="middle" font-weight="600" fill="#0f766e">5 · claim: FOR UPDATE SKIP LOCKED (lease 60 s)</text>
+
+      <!-- loop lotes -->
+      <rect x="620" y="290" width="300" height="52" rx="8" fill="none" stroke="#0f766e" stroke-dasharray="6 4"/>
+      <text x="770" y="306" text-anchor="middle" font-size="10.5" fill="#0f766e" font-weight="700">loop [172 lotes de 200k]</text>
+      <line x1="690" y1="326" x2="843" y2="326" stroke="#0f766e" stroke-width="1.5" marker-end="url(#sq1t)"/>
+      <text x="770" y="320" text-anchor="middle" font-size="10" fill="#0f766e">COPY binario + UPDATE checkpoint — UNA transacción</text>
+
+      <!-- 6-7 agregacion/swap -->
+      <line x1="690" y1="362" x2="843" y2="362" stroke="#b45309" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="770" y="356" text-anchor="middle" font-weight="600" fill="#b45309">6 · GROUP BY (work_mem 2 GB) · CREATE INDEX · VACUUM</text>
+      <line x1="690" y1="390" x2="843" y2="390" stroke="#15803d" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="770" y="384" text-anchor="middle" font-weight="600" fill="#15803d">7 · UPDATE active_import FOR UPDATE (swap) → Completed</text>
+
+      <!-- 8: evento -->
+      <line x1="550" y1="418" x2="998" y2="418" stroke="#b91c1c" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#sq1d)"/>
+      <text x="774" y="412" text-anchor="middle" font-size="10.5">8 · ImportCompletedEvent → SQS (best-effort) → notifier → email (Mailpit)</text>
+
+      <!-- 9: polling -->
+      <line x1="80" y1="448" x2="388" y2="448" stroke="#8a94aa" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#sq1d)"/>
+      <line x1="390" y1="448" x2="548" y2="448" stroke="#8a94aa" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#sq1d)"/>
+      <text x="469" y="442" text-anchor="middle" font-size="10.5">9 · GET /api/imports/:id cada 2 s — fase (b): bytesCommitted/size → %</text>
+      <text x="234" y="466" text-anchor="middle" font-size="10" fill="#5b677f">hasta estado terminal (Completed / Failed), con F5 sobreviviente vía sessionStorage</text>
+    </g>
+  </svg>
+
+  <h3 style="margin:20px 0 8px;font-size:.98rem;color:var(--navy)">Camino de lectura (las grillas Deudores / Entidades / Totales)</h3>
+  <svg viewBox="0 0 1080 130" role="img" aria-label="Camino de lectura: browser, BFF, query API, PostgreSQL" style="width:100%;height:auto">
+    <g font-size="11" fill="#3c465c">
+      <rect x="20"  y="8" width="120" height="30" rx="8" fill="#eef1f7" stroke="#64748b"/><text x="80"  y="27" text-anchor="middle" font-weight="700">Browser</text>
+      <rect x="330" y="8" width="120" height="30" rx="8" fill="#eceafb" stroke="#4338ca"/><text x="390" y="27" text-anchor="middle" font-weight="700">BFF</text>
+      <rect x="640" y="8" width="120" height="30" rx="8" fill="#e6f4f2" stroke="#0f766e"/><text x="700" y="27" text-anchor="middle" font-weight="700">Query :18081</text>
+      <rect x="880" y="8" width="120" height="30" rx="8" fill="#fdf3e3" stroke="#b45309"/><text x="940" y="27" text-anchor="middle" font-weight="700">PostgreSQL</text>
+      <line x1="80" y1="55" x2="388" y2="55" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="234" y="50" text-anchor="middle">GET /api/deudores?offset&amp;limit&amp;situacionMaxima</text>
+      <line x1="390" y1="55" x2="698" y2="55" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <line x1="700" y1="55" x2="938" y2="55" stroke="#3c465c" stroke-width="1.5" marker-end="url(#sq1)"/>
+      <text x="820" y="50" text-anchor="middle" font-size="10" fill="#5b677f">rol bcra_readonly · MVCC sin locks</text>
+      <line x1="940" y1="75" x2="82" y2="75" stroke="#8a94aa" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#sq1d)"/>
+      <text x="510" y="70" text-anchor="middle" font-size="10.5">SELECT ... JOIN active_import (resuelve la versión publicada) → rows al BFF → JSON al browser</text>
+      <text x="510" y="100" text-anchor="middle" font-size="10" fill="#5b677f">Sin import en curso que interfiera: durante un swap, MVCC garantiza versión vieja o nueva, nunca mixta (ADR-007).</text>
+    </g>
+  </svg>
+
+  <h3 style="margin:20px 0 8px;font-size:.98rem;color:var(--navy)">Cómo seguís un request (traceo)</h3>
+  <div class="inv">
+    <div class="card">
+      <h3>🆔 El correlation-id</h3>
+      <p>Nace en el <strong>BFF</strong> por request (<code>X-Correlation-Id</code>), viaja como header a ingestion/query, entra como tag <code>correlation_id</code> del trace OpenTelemetry y se agrega a cada log de Serilog junto al <code>TraceId</code> (W3C).</p>
+    </div>
+    <div class="card">
+      <h3>🔎 Dónde mirarlo</h3>
+      <p><code>docker logs bcra-ingestion-api 2&gt;&amp;1 | grep &lt;correlationId&gt;</code> cruza requests HTTP y fases del worker; Grafana (dashboard BCRA) para las métricas del pipeline; Prometheus para <code>bcra_import_phase_duration_seconds</code>.</p>
+    </div>
+    <div class="card">
+      <h3>📐 Qué cubre el trace</h3>
+      <p>Los <strong>3 servicios</strong> registran runtime + HTTP (helper compartido <code>AddObservability</code>); las fases del worker se miden con <code>ImportPipelineMeter</code> (staging / aggregation / indexes / swap / total) — ADR-009.</p>
+    </div>
+  </div>
+</div>
+
 <h2>Las 3 invariantes que sostienen todo</h2>
 <div class="inv">
   <div class="card">
