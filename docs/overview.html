@@ -767,6 +767,34 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       <li><code>SET</code> sessionales en el repositorio: <code>work_mem='2GB'</code> en la agregación (la tabla hash de ~20M de grupos necesita ~2-3 GB; con 4 MB de default spillea toda a disco) y <code>maintenance_work_mem='512MB'</code> en la creación de índices. Session-scoped: mueren con la conexión al volver al pool.</li>
       <li>Batch size 200k y pool 50 se mantienen: la medición no muestra cuello de botella del lado .NET (el limiter es Postgres en la agregación).</li>
     </ul>
+
+    <h3>¿Y en la nube? Posibles soluciones con servicios de AWS <span style="font-weight:400;color:var(--muted);font-size:.82rem">(evaluadas y apartadas — constancia de análisis)</span></h3>
+    <p class="lead">La empresa opera en AWS y el challenge corre 100&nbsp;% local por premisa (Docker + LocalStack, que ya emula el S3/SQS que usan el upload y el notifier). Para el mismo pipeline mensual se analizaron dos salidas cloud de bajo rozamiento — una con 2 servicios (serverless) y otra con 1 (lift-and-shift) — y se apartaron hasta que se disparen los gatillos de ADR-011/013 (cadencia diaria, SLA de ventana, crecimiento superlineal del archivo). Referencia de partida: end-to-end medido <strong>624 s</strong> post-ADR-013 (CTAS paralelo + PG17; ver <a href="adr/ADR-013-paralelismo-ctas-tuning-infra.md">ADR-013</a>), con staging 255,8 s + agregación 230,4 s + índices 146,0 s como fases dominantes.</p>
+    <div class="adrs">
+      <div class="adr" style="grid-column:1/-1">
+        <span class="adr-id">Opción A</span>
+        <h4>Amazon S3 + Amazon Athena (2 servicios, serverless)</h4>
+        <span class="tag" style="background:#fdf3e3;color:#92400e;border:1px solid #f3ddb7">Evaluada y apartada</span>
+        <span class="lbl">Cómo sería</span>
+        <p>El archivo mensual ya puede vivir en S3: <code>S3FileSource</code> existe en el ingestion (fuentes <code>s3://</code> con allow-list de buckets y lecturas por rango) y el BFF ya soporta destino <code>s3</code> en el upload. Las tres fases pesadas (staging + GROUP BY + índices, ≈632 s sumadas) se reemplazan por un <code>CREATE TABLE AS SELECT ... GROUP BY</code> de <strong>Athena</strong> (Trino administrado, cómputo paralelo sin servidores que operar): lee el objeto de S3 y escribe el agregado de ~19,9 M de deudores a S3 en Parquet. El pipeline .NET conserva reclamo/lease/checkpoint/swap tal cual (ADR-005/006): solo cambia <em>dónde</em> se computa la agregación, y Postgres queda para la API de consulta.</p>
+        <span class="lbl">Ganancia y costo estimados</span>
+        <p>Orden de <strong>&lt;2-3 min</strong> end-to-end (coincide con la nota de "cambiar el sustrato" del ADR-011). Athena cobra por datos escaneados (~US$5/TB): ~12-18 GB por corrida ≈ <strong>centavos de dólar por mes</strong>; el almacenamiento de ~6 GB en S3 ≈ US$0,14/mes. Sin costo fijo: se paga por query.</p>
+        <span class="lbl">El costo real (detalle honesto)</span>
+        <p>El archivo del BCRA es de <strong>ancho fijo</strong> y Athena no trae SerDe nativo para ese formato: hace falta un paso previo a formato spliteable (CSV/Parquet) — un job de Glue, una Lambda, o reutilizar el parser .NET ya existente en el uploader. Ese convertidor es la fricción de esta opción, no Athena. Por eso se aparta: agrega un sustrato de cómputo y un paso nuevo para un job mensual sin SLA.</p>
+      </div>
+      <div class="adr" style="grid-column:1/-1">
+        <span class="adr-id">Opción B</span>
+        <h4>Amazon RDS for PostgreSQL (1 servicio, lift-and-shift)</h4>
+        <span class="tag" style="background:#fdf3e3;color:#92400e;border:1px solid #f3ddb7">Evaluada y apartada</span>
+        <span class="lbl">Cómo sería</span>
+        <p>Mismo código y diseño, <strong>cero cambios</strong>: solo apuntar el connection string a una instancia administrada (p. ej. <code>db.r7g.2xlarge</code>: 8 vCPU dedicadas + 64 GB) con EBS gp3/io2 de throughput provisionado (500-1000 MB/s sostenidos). El swap a PG17 del ADR-13 lo administra RDS sin reprovisionar volúmenes a mano.</p>
+        <span class="lbl">Ganancia y costo estimados</span>
+        <p>Las fases lentas medidas son CPU + I/O bound sobre una VM compartida con otros stacks: el CTAS paralelo del ADR-13 y los 3 <code>CREATE INDEX</code> concurrentes escalan de verdad con vCPUs dedicadas y EBS rápido — estimación <strong>2-4× (a ~3-5 min)</strong> sin tocar una línea. Bonus de administrado: backups automáticos, Multi-AZ, métricas y read replica para el query-service. Costo orden de magnitud: ~US$0,65/h ≈ <strong>US$470/mes</strong> + almacenamiento (us-east-1, on-demand; Multi-AZ duplica), siempre encendida para servir la API de consulta.</p>
+        <span class="lbl">Por qué se aparta</span>
+        <p>Para una corrida mensual sin SLA, un costo fijo mensual no compite con el stack local. Es la primera candidata si el volumen de consultas o la continuidad operativa exigen salir de Docker Desktop.</p>
+      </div>
+    </div>
+    <p class="note"><strong>Orden de adopción si un gatillo se dispara:</strong> B primero (cero cambio de código, resuelve CPU/I/O), A después si además cae un SLA de ventana o el archivo crece superlinealmente (costo marginal por query, sin infra que operar). Ambas quedan documentadas junto a las alternativas locales de ADR-011/012/013 como parte del análisis, no como deuda pendiente.</p>
   </div>
 </section>
 
