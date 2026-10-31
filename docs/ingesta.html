@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cómo funciona la ingesta — Wayni Challenge</title>
+<style>
+  :root{
+    --navy:#16233f; --navy2:#1d2f57; --ink:#1c2434; --muted:#5b677f;
+    --teal:#0f766e; --teal-bg:#e6f4f2; --amber:#b45309; --amber-bg:#fdf3e3;
+    --indigo:#4338ca; --indigo-bg:#eceafb; --line:#d7deea; --bg:#f4f6fa; --card:#fff;
+    --green:#15803d; --green-bg:#e9f7ee; --red:#b91c1c; --red-bg:#fdeaea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  main{max-width:1060px;margin:0 auto;padding:28px 22px 60px}
+  header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 60%,#27406f 100%);color:#e7edf8;border-radius:18px;padding:34px 38px;margin-bottom:26px}
+  header h1{margin:0 0 6px;font-size:1.7rem}
+  header p{margin:0;color:#b9c6de;max-width:60em}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
+  .kpi{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px 16px;min-width:150px}
+  .kpi b{display:block;font-size:1.25rem;color:#fff}
+  .kpi span{font-size:.78rem;color:#a9b7d4}
+  h2{font-size:1.22rem;margin:34px 0 12px;color:var(--navy)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .phase{display:grid;grid-template-columns:56px 1fr;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:0 0 6px}
+  .phase .n{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;color:#fff;font-weight:700;font-size:1.05rem}
+  .phase h3{margin:0 0 4px;font-size:1.02rem;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .phase p{margin:4px 0;color:#3c465c}
+  .time{font-size:.74rem;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .t-teal{background:var(--teal-bg);color:var(--teal)} .t-amber{background:var(--amber-bg);color:var(--amber)}
+  .t-indigo{background:var(--indigo-bg);color:var(--indigo)} .t-green{background:var(--green-bg);color:var(--green)}
+  .t-red{background:var(--red-bg);color:var(--red)} .t-muted{background:#eef1f7;color:var(--muted)}
+  code{background:#eef1f7;border:1px solid #dfe5f0;border-radius:5px;padding:1px 5px;font-size:.82em;font-family:ui-monospace,Consolas,monospace}
+  pre{background:#101a30;color:#d9e4f5;border-radius:10px;padding:12px 15px;overflow-x:auto;font-size:.78rem;line-height:1.5;margin:8px 0 2px}
+  pre c{color:#7f93b8;font-style:italic}
+  .arrow{width:2px;height:26px;background:var(--line);margin:0 auto 6px;position:relative}
+  .arrow:after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--line)}
+  .arrow-wrap{display:grid;grid-template-columns:56px 1fr}
+  .tables{font-size:.75rem;color:var(--muted);margin-top:6px}
+  .tables b{color:var(--navy)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--muted);margin:10px 2px 0}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .inv{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .inv .card h3{margin:0 0 6px;font-size:.95rem}
+  .inv .card p{margin:0;font-size:.86rem;color:#3c465c}
+  footer{margin-top:36px;font-size:.8rem;color:var(--muted);text-align:center}
+  .note{font-size:.8rem;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Cómo funciona la ingesta del archivo de deudores</h1>
+  <p>Diagrama completo del pipeline <em>tal como funciona hoy</em>: desde la subida del archivo hasta la publicación atómica de los agregados, con los tiempos reales medidos sobre el dataset de 5,9 GB (34.385.567 líneas → 19.926.199 deudores, 485 entidades). Total end-to-end ≈ 11,5 min.</p>
+  <div class="kpis">
+    <div class="kpi"><b>5,9 GB</b><span>archivo fuente (~5 GB de BCRA + overhead)</span></div>
+    <div class="kpi"><b>34,4 M</b><span>líneas válidas → staging</span></div>
+    <div class="kpi"><b>19,9 M</b><span>deudores agregados (GROUP BY CUIT)</span></div>
+    <div class="kpi"><b>~689 s</b><span>end-to-end medido (post-tuning, ADR-011)</span></div>
+  </div>
+</header>
+
+<h2>Línea de tiempo del import (duración real por fase)</h2>
+<div class="card">
+  <svg viewBox="0 0 1000 118" role="img" aria-label="Línea de tiempo: staging 251,5 s, agregación 298,9 s, índices 137,4 s, swap 0,03 s; total 689 s" style="width:100%;height:auto">
+    <text x="0" y="14" font-size="12" fill="#5b677f">Desde el claim del worker hasta Completed — barras proporcionales al tiempo medido</text>
+    <g font-size="12">
+      <rect x="0"   y="24" width="365" height="34" rx="6" fill="#0f766e"/>
+      <rect x="369" y="24" width="434" height="34" rx="6" fill="#b45309"/>
+      <rect x="807" y="24" width="189" height="34" rx="6" fill="#4338ca"/>
+      <rect x="0"   y="66" width="3"   height="10" fill="#15803d"/>
+      <text x="10" y="88" font-size="11" fill="#15803d">swap 0,03 s (transacción de 1 UPDATE)</text>
+      <text x="183" y="45" text-anchor="middle" fill="#fff" font-weight="700">staging · 251,5 s</text>
+      <text x="586" y="45" text-anchor="middle" fill="#fff" font-weight="700">agregación · 298,9 s</text>
+      <text x="901" y="45" text-anchor="middle" fill="#fff" font-weight="700">índices · 137,4 s</text>
+      <text x="0"   y="110" font-size="11" fill="#5b677f"> staging = COPY por lotes + checkpoint (36%)</text>
+      <text x="330" y="110" font-size="11" fill="#5b677f"> agregación = GROUP BY en SQL (43%)</text>
+      <text x="690" y="110" font-size="11" fill="#5b677f"> índices = CREATE INDEX + VACUUM (20%)</text>
+    </g>
+  </svg>
+  <p class="note">Post-Completed sigue el cleanup del import <em>anterior</em> (DROP de staging vieja + DELETE de ~20 M de agregados, ~2 min) que no cuenta en el end-to-end: corre después de marcar Completed.</p>
+</div>
+
+<h2>El flujo completo, paso a paso</h2>
+
+<div class="phase">
+  <div><div class="n" style="background:#64748b">0</div></div>
+  <div>
+    <h3>Upload vía BFF — el nombre del archivo no importa <span class="time t-muted">browser + BFF</span></h3>
+    <p>La web sube el multipart al BFF (<code>POST /api/imports/upload</code>): archivo + <code>periodo</code> + referencias opcionales + destino (<code>local</code> o <code>s3</code>). El BFF calcula el <strong>sha256 del contenido</strong> y lo usa como etag; la key de guardado se deriva del contenido, no del nombre:</p>
+    <pre><c>-- storage local (default de la UI): copia al DATA_DIR montado como /data:ro</c>
+uploads/&lt;periodo&gt;/deudores-&lt;sha256[0..16]&gt;.txt      <c>-- mismo contenido ⇒ misma key, siempre</c>
+uploads/&lt;periodo&gt;/Maeent.txt · Nomdeu.txt            <c>-- referencias, por periodo</c></pre>
+    <p>Luego llama al ingestion: <code>POST /imports</code> con <code>{source, etag, size, periodo}</code> + <code>X-Api-Key</code> (secreto que solo vive en el BFF).</p>
+    <p class="tables"><b>Regla operativa:</b> renombrar el archivo no fuerza reimport (source y etag son del contenido). Referencias por periodo: si es un periodo nuevo y no van adjuntas, el import falla — la UI lo advierte.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--teal)">1</div></div>
+  <div>
+    <h3>Idempotencia del upload <span class="time t-teal">1 query</span></h3>
+    <pre>INSERT INTO import_job (id, source, etag, size, periodo, status, created_at)
+VALUES (...) <b>ON CONFLICT (source, etag, periodo) DO NOTHING</b>;</pre>
+    <p>Si insertó → <strong>201 Created</strong>, job <code>Pending</code>. Si ya existía → <strong>200 OK</strong> devolviendo el job existente (<code>alreadyExisted=true</code>) cuando está en curso o es el publicado: re-subir el mismo archivo en el mismo periodo es un no-op. Si el existente es un terminal <em>no publicado</em> (Failed o Completed sin agregados), se descarta en la misma transacción y se crea la corrida nueva.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--teal)">2</div></div>
+  <div>
+    <h3>Reclamo del worker (lease) <span class="time t-teal">SKIP LOCKED</span></h3>
+    <p>El worker (dentro del ingestion-API) hace polling. Reclama el job más antiguo elegible — <code>Pending</code> o con <code>heartbeat_at</code> vencido (60 s) — con <code>FOR UPDATE SKIP LOCKED</code> y lo activa: <code>Pending → Loading</code>, setea <code>lease_owner</code> y heartbeat.</p>
+    <p>Un <strong>índice único parcial</strong> sobre estados <code>Loading/Aggregating</code> garantiza un solo import activo a la vez: si choca (23505), el job queda Pending y se reintenta — no falla.</p>
+    <p class="tables"><b>Invariante:</b> a lo sumo 1 import ejecutándose; N workers no se bloquean entre sí (SKIP LOCKED).</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--teal)">3</div></div>
+  <div>
+    <h3>Staging — COPY por lotes + checkpoint atómico <span class="time t-teal">251,5 s medidos</span></h3>
+    <p>Se crea la partición <code>debt_staging_&lt;importId&gt;</code> (particionada por import). Loop: leer el archivo desde <code>bytes_committed</code> (reanudable), parsear 200k líneas por lote (clase Record / Control 98-99 / Invalid) y confirmar <strong>COPY binario + checkpoint en UNA transacción READ COMMITTED</strong>:</p>
+    <pre><c>-- por cada lote, atómico:</c>
+COPY debt_staging_&lt;importId&gt; FROM STDIN (FORMAT BINARY);
+UPDATE import_job SET bytes_committed=…, lines_…=…, heartbeat_at=now WHERE id=@id AND lease_owner=@me;</pre>
+    <p>No existe lote en staging sin su checkpoint ⇒ reanudar nunca duplica filas. Si el worker cae, el lease vence y otro retoma desde el checkpoint. ~136.700 líneas/s · 172 lotes.</p>
+    <p class="tables"><b>Estado:</b> <code>Loading → Aggregating</code> al consumir el archivo completo.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--amber)">4</div></div>
+  <div>
+    <h3>Agregación SQL (GROUP BY) <span class="time t-amber">298,9 s medidos</span></h3>
+    <p>Sobre una conexión con <code>SET work_mem='2GB'</code> (sessional, muere con la conexión):</p>
+    <pre>DELETE FROM deudor_agg  WHERE import_id=@id;              <c>-- re-agregación idempotente</c>
+INSERT INTO deudor_agg  SELECT import_id, cuit, MAX(situacion), SUM(monto)
+                         FROM debt_staging_&lt;id&gt; GROUP BY cuit;
+INSERT INTO entidad_agg SELECT import_id, entidad, SUM(monto)
+                         FROM debt_staging_&lt;id&gt; GROUP BY entidad;
+UPDATE import_job SET deudores_count=…, entidades_count=…, suma_total=…;</pre>
+    <p>34,4 M de filas → 19,9 M de deudores + 485 entidades. El 2 GB de work_mem evita el spill a disco de la tabla hash (ADR-011); el resto del tiempo es I/O.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--indigo)">5</div></div>
+  <div>
+    <h3>Índices pre-swap <span class="time t-indigo">137,4 s medidos</span></h3>
+    <p>Con <code>SET maintenance_work_mem='512MB'</code>: 3 índices <em>parciales por import</em> (solo tocan las filas del import nuevo) + <code>VACUUM ANALYZE</code> para que las queries del import ya publicado usen index-only scans. Se crean ANTES del swap: al publicar, todo ya está indexado.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:var(--green)">6</div></div>
+  <div>
+    <h3>Swap atómico de la versión publicada <span class="time t-green">0,03 s</span></h3>
+    <pre>SELECT import_id FROM active_import WHERE id=1 <b>FOR UPDATE</b>;   <c>-- lock de la fila única</c>
+UPDATE active_import SET import_id=@nuevo WHERE id=1;</pre>
+    <p>Los lectores del query-service resuelven <code>active_import</code> con MVCC: durante el swap ven la versión vieja o la nueva, <strong>nunca un estado mixto</strong>. El job pasa a <code>Completed</code>.</p>
+  </div>
+</div>
+<div class="arrow-wrap"><div class="arrow"></div></div>
+
+<div class="phase">
+  <div><div class="n" style="background:#64748b">7</div></div>
+  <div>
+    <h3>Post-Completed: notificación + cleanup del anterior <span class="time t-muted">best-effort · ~2 min</span></h3>
+    <p>Se publica <code>ImportCompletedEvent</code> en SQS (si falla, se loguea y no rompe el import) → notifier envía el email a los registrados (Mailpit en dev). Luego el cleanup del import <strong>anterior</strong>: DROP de su partición de staging, DROP de sus índices parciales y DELETE de sus ~20 M de agregados — nunca del activo. Por eso el import siguiente corre con la tabla "convivida" (costo asumido, ver ADR-011).</p>
+  </div>
+</div>
+
+<h2>Máquina de estados del ImportJob</h2>
+<div class="card">
+  <svg viewBox="0 0 1040 470" role="img" aria-label="Máquina de estados del job de import: Pending, Loading, Aggregating, Completed, Failed" style="width:100%;height:auto">
+    <defs>
+      <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3c465c"/></marker>
+      <marker id="ar1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b91c1c"/></marker>
+      <marker id="ar1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#15803d"/></marker>
+    </defs>
+    <g font-size="12" fill="#3c465c">
+      <!-- estados -->
+      <circle cx="14" cy="70" r="7" fill="#3c465c"/>
+      <text x="8" y="52" font-size="11" fill="#5b677f">POST /imports</text>
+      <rect x="40"  y="42" width="140" height="56" rx="12" fill="#eef1f7" stroke="#64748b" stroke-width="1.6"/>
+      <text x="110" y="66" text-anchor="middle" font-weight="700">Pending</text>
+      <text x="110" y="84" text-anchor="middle" font-size="10.5" fill="#5b677f">201 Created</text>
+
+      <rect x="300" y="42" width="160" height="56" rx="12" fill="#e6f4f2" stroke="#0f766e" stroke-width="1.6"/>
+      <text x="380" y="66" text-anchor="middle" font-weight="700" fill="#0f766e">Loading</text>
+      <text x="380" y="84" text-anchor="middle" font-size="10.5" fill="#0f766e">COPY por lotes + checkpoint</text>
+
+      <rect x="600" y="42" width="170" height="56" rx="12" fill="#fdf3e3" stroke="#b45309" stroke-width="1.6"/>
+      <text x="685" y="66" text-anchor="middle" font-weight="700" fill="#b45309">Aggregating</text>
+      <text x="685" y="84" text-anchor="middle" font-size="10.5" fill="#b45309">GROUP BY en SQL</text>
+
+      <rect x="860" y="42" width="160" height="56" rx="12" fill="#e9f7ee" stroke="#15803d" stroke-width="1.8"/>
+      <text x="940" y="66" text-anchor="middle" font-weight="700" fill="#15803d">Completed</text>
+      <text x="940" y="84" text-anchor="middle" font-size="10.5" fill="#15803d">publicado en active_import</text>
+
+      <rect x="430" y="250" width="160" height="56" rx="12" fill="#fdeaea" stroke="#b91c1c" stroke-width="1.6"/>
+      <text x="510" y="274" text-anchor="middle" font-weight="700" fill="#b91c1c">Failed</text>
+      <text x="510" y="292" text-anchor="middle" font-size="10.5" fill="#b91c1c">terminal, no publicado</text>
+
+      <!-- flujo feliz -->
+      <line x1="21"  y1="70" x2="38"  y2="70" stroke="#3c465c" stroke-width="1.6" marker-end="url(#ar1)"/>
+      <line x1="180" y1="70" x2="298" y2="70" stroke="#3c465c" stroke-width="1.6" marker-end="url(#ar1)"/>
+      <text x="239" y="60" text-anchor="middle" font-size="11">claim: SKIP LOCKED</text>
+      <line x1="460" y1="70" x2="598" y2="70" stroke="#3c465c" stroke-width="1.6" marker-end="url(#ar1)"/>
+      <text x="529" y="60" text-anchor="middle" font-size="11">archivo consumido</text>
+      <line x1="770" y1="70" x2="858" y2="70" stroke="#15803d" stroke-width="1.8" marker-end="url(#ar1g)"/>
+      <text x="814" y="60" text-anchor="middle" font-size="11" fill="#15803d">swap (0,03 s)</text>
+
+      <!-- a Failed -->
+      <path d="M380 98 C 400 170, 440 210, 470 248" fill="none" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar1r)"/>
+      <path d="M685 98 C 660 170, 600 210, 560 248" fill="none" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar1r)"/>
+      <text x="330" y="185" text-anchor="middle" font-size="11" fill="#b91c1c">fuente cambiada / borrada /</text>
+      <text x="330" y="200" text-anchor="middle" font-size="11" fill="#b91c1c">no autorizada (ETag/size)</text>
+      <text x="740" y="185" text-anchor="middle" font-size="11" fill="#b91c1c">ídem desde Aggregating</text>
+
+      <!-- takeover self-loops -->
+      <path d="M330 42 C 340 12, 420 12, 430 42" fill="none" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar1)"/>
+      <text x="380" y="16" text-anchor="middle" font-size="10.5" fill="#0f766e">takeover: lease vencido (60 s) → resume desde checkpoint</text>
+      <path d="M630 42 C 640 12, 730 12, 740 42" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar1)"/>
+      <text x="685" y="30" text-anchor="middle" font-size="10.5" fill="#b45309">takeover: re-agrega idempotente</text>
+
+      <!-- reemplazo de terminales -->
+      <path d="M430 296 C 260 340, 110 220, 106 100" fill="none" stroke="#b91c1c" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#ar1r)"/>
+      <text x="180" y="345" text-anchor="middle" font-size="11" fill="#b91c1c">re-subida del mismo (source, etag, periodo):</text>
+      <text x="180" y="360" text-anchor="middle" font-size="11" fill="#b91c1c">fila descartada + corrida NUEVA (otro id)</text>
+
+      <path d="M860 84 C 700 190, 300 200, 150 100" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#ar1g)"/>
+      <text x="480" y="345" text-anchor="middle" font-size="11" fill="#15803d">Completed NO publicado ("zombie", sus agregados fueron limpiados por un swap posterior):</text>
+      <text x="480" y="360" text-anchor="middle" font-size="11" fill="#15803d">mismo tratamiento que Failed — se descarta y reemplaza. El publicado re-subido = 200 con el MISMO job (no-op).</text>
+
+      <!-- nota conexión -->
+      <rect x="40" y="395" width="960" height="58" rx="10" fill="#f6f8fc" stroke="#d7deea"/>
+      <text x="60" y="418" font-size="11.5" fill="#3c465c"><tspan font-weight="700">Pérdida de conexión (DbException):</tspan> el worker aborta SIN cambiar el estado y sin confirmar nada — no es transición a Failed.</text>
+      <text x="60" y="438" font-size="11.5" fill="#3c465c">Deja de renovar el heartbeat ⇒ el lease vence ⇒ otro worker reclama (takeover) y retoma desde el checkpoint sin duplicar filas.</text>
+    </g>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#3c465c"></i>transición normal</span>
+    <span><i style="background:#b91c1c"></i>fallo terminal</span>
+    <span><i style="background:#0f766e"></i>recuperación (dashed)</span>
+    <span><i style="background:#15803d"></i>reemplazo de terminal no publicado (dashed)</span>
+  </div>
+</div>
+
+<h2>Modelo de datos del pipeline (ER)</h2>
+<div class="card">
+  <svg viewBox="0 0 1040 520" role="img" aria-label="Diagrama entidad-relación: import_job, staging, agregados, active_import, maestros y notification_recipient" style="width:100%;height:auto">
+    <defs>
+      <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a94aa"/></marker>
+    </defs>
+    <g font-size="11.5" fill="#3c465c">
+      <!-- active_import -->
+      <rect x="40" y="30" width="200" height="74" rx="10" fill="#e9f7ee" stroke="#15803d" stroke-width="1.6"/>
+      <text x="140" y="52" text-anchor="middle" font-weight="700" fill="#15803d">active_import (singleton)</text>
+      <text x="140" y="70" text-anchor="middle" font-size="10.5">id=1 · import_id</text>
+      <text x="140" y="88" text-anchor="middle" font-size="10.5">la versión publicada</text>
+
+      <!-- import_job -->
+      <rect x="40" y="180" width="290" height="160" rx="10" fill="#fff" stroke="#16233f" stroke-width="1.8"/>
+      <text x="185" y="204" text-anchor="middle" font-weight="700" fill="#16233f">import_job</text>
+      <text x="56" y="226" font-size="10.5">id · source · etag · size · periodo</text>
+      <text x="56" y="243" font-size="10.5">status · lease_owner · heartbeat_at</text>
+      <text x="56" y="260" font-size="10.5">bytes_committed · lines_* (3 clases)</text>
+      <text x="56" y="277" font-size="10.5">deudores_count · entidades_count · suma_total</text>
+      <text x="56" y="300" font-size="10.5" fill="#b91c1c">UNIQUE (source, etag, periodo) — idempotencia</text>
+      <text x="56" y="317" font-size="10.5" fill="#b91c1c">UNIQUE parcial single_active — 1 activo</text>
+
+      <!-- staging -->
+      <rect x="40" y="410" width="290" height="84" rx="10" fill="#e6f4f2" stroke="#0f766e" stroke-width="1.6" stroke-dasharray="7 4"/>
+      <text x="185" y="432" text-anchor="middle" font-weight="700" fill="#0f766e">debt_staging (PARTITIONED)</text>
+      <text x="185" y="450" text-anchor="middle" font-size="10.5">particiones debt_staging_&lt;importId&gt;</text>
+      <text x="185" y="468" text-anchor="middle" font-size="10.5">import_id · entidad · cuit · situacion · monto</text>
+      <text x="185" y="486" text-anchor="middle" font-size="10.5">cleanup = DROP TABLE de la partición</text>
+
+      <!-- agregados -->
+      <rect x="420" y="400" width="200" height="94" rx="10" fill="#fdf3e3" stroke="#b45309" stroke-width="1.6"/>
+      <text x="520" y="422" text-anchor="middle" font-weight="700" fill="#b45309">deudor_agg</text>
+      <text x="520" y="440" text-anchor="middle" font-size="10.5">import_id · cuit</text>
+      <text x="520" y="457" text-anchor="middle" font-size="10.5">situacion_maxima · suma_total</text>
+      <text x="520" y="478" text-anchor="middle" font-size="10.5" fill="#b45309">19,9 M filas por import</text>
+
+      <rect x="420" y="290" width="200" height="84" rx="10" fill="#fdf3e3" stroke="#b45309" stroke-width="1.6"/>
+      <text x="520" y="312" text-anchor="middle" font-weight="700" fill="#b45309">entidad_agg</text>
+      <text x="520" y="330" text-anchor="middle" font-size="10.5">import_id · codigo_entidad · suma_total</text>
+      <text x="520" y="348" text-anchor="middle" font-size="10.5">485 filas por import</text>
+
+      <!-- maestros -->
+      <rect x="720" y="410" width="260" height="84" rx="10" fill="#eceafb" stroke="#4338ca" stroke-width="1.6"/>
+      <text x="850" y="432" text-anchor="middle" font-weight="700" fill="#4338ca">deudor_nombre (Nomdeu.txt)</text>
+      <text x="850" y="450" text-anchor="middle" font-size="10.5">cuit PK · nombre</text>
+      <text x="850" y="468" text-anchor="middle" font-size="10.5">JOIN con deudor_agg para nombres</text>
+
+      <rect x="720" y="290" width="260" height="84" rx="10" fill="#eceafb" stroke="#4338ca" stroke-width="1.6"/>
+      <text x="850" y="312" text-anchor="middle" font-weight="700" fill="#4338ca">entidad (Maeent.txt)</text>
+      <text x="850" y="330" text-anchor="middle" font-size="10.5">codigo PK · nombre</text>
+      <text x="850" y="348" text-anchor="middle" font-size="10.5">JOIN con entidad_agg para nombres</text>
+
+      <rect x="720" y="30" width="260" height="84" rx="10" fill="#f6f8fc" stroke="#8a94aa" stroke-width="1.6"/>
+      <text x="850" y="52" text-anchor="middle" font-weight="700">notification_recipient</text>
+      <text x="850" y="70" text-anchor="middle" font-size="10.5">email UNIQUE · created_at</text>
+      <text x="850" y="88" text-anchor="middle" font-size="10.5">BFF escribe · notifier lee</text>
+
+      <!-- relaciones -->
+      <line x1="140" y1="104" x2="165" y2="178" stroke="#8a94aa" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text x="118" y="145" font-size="10.5" fill="#5b677f">apunta al</text>
+      <line x1="185" y1="340" x2="185" y2="408" stroke="#8a94aa" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+      <text x="195" y="380" font-size="10.5" fill="#5b677f">import_id (sin FK física: DROP/DELETE por import_id)</text>
+      <line x1="330" y1="440" x2="418" y2="443" stroke="#8a94aa" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+      <line x1="330" y1="325" x2="418" y2="328" stroke="#8a94aa" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+      <text x="330" y="382" font-size="10.5" fill="#5b677f">agregan staging por import_id</text>
+      <line x1="620" y1="440" x2="718" y2="446" stroke="#8a94aa" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text x="669" y="432" text-anchor="middle" font-size="10.5" fill="#5b677f">cuit</text>
+      <line x1="620" y1="328" x2="718" y2="328" stroke="#8a94aa" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text x="669" y="320" text-anchor="middle" font-size="10.5" fill="#5b677f">codigo_entidad</text>
+      <line x1="330" y1="210" x2="718" y2="75" stroke="none"/>
+    </g>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#15803d"></i>publicación (swap)</span>
+    <span><i style="background:#16233f"></i>máquina de estados</span>
+    <span><i style="background:#0f766e"></i>datos crudos del import</span>
+    <span><i style="background:#b45309"></i>agregados (leídos por query)</span>
+    <span><i style="background:#4338ca"></i>maestros de referencia</span>
+    <span><i style="background:#8a94aa"></i>relación lógica (sin FK física)</span>
+  </div>
+  <p class="note">Sin FKs físicas deliberadamente: staging y agregados se crean/borran por <code>import_id</code> con DDL (DROP de particiones, índices parciales) — una FK obligaría a borrar en orden y acoplaría el cleanup. El query-service siempre filtra por el <code>import_id</code> de <code>active_import</code>.</p>
+</div>
+
+<h2>Las 3 invariantes que sostienen todo</h2>
+<div class="inv">
+  <div class="card">
+    <h3>🔁 Idempotencia por (source, etag, periodo)</h3>
+    <p>Source y etag se derivan del <strong>contenido</strong> (sha256). Re-subir el mismo archivo en el mismo periodo devuelve el job existente sin reprocesar. Solo un cambio de contenido o de periodo genera corrida nueva.</p>
+  </div>
+  <div class="card">
+    <h3>1️⃣ Un solo import activo</h3>
+    <p>Índice único parcial sobre <code>Loading/Aggregating</code>. Sin él no habría swap consistente: agregar un worker escala la cola, no la velocidad de un archivo (ADR-006).</p>
+  </div>
+  <div class="card">
+    <h3>🧗 Reanudable sin duplicar</h3>
+    <p>Lote a staging + checkpoint en la misma transacción + lease con heartbeat: un worker caído pierde el lease, otro retoma desde <code>bytes_committed</code> y la re-agregación es idempotente (DELETE previo).</p>
+  </div>
+</div>
+
+<footer>Wayni Challenge · Estado del pipeline al 31/10/2026 · Tiempos medidos con <code>bcra_import_phase_duration</code> (Prometheus) sobre Docker Desktop, VM de 15,5 GB · Detalle de decisiones: <code>docs/adr/</code> (ADR-002, 005, 006, 011)</footer>
+</main>
+</body>
+</html>
