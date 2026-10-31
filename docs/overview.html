@@ -169,13 +169,13 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <li><strong>Resiliente por diseño</strong>: reanudación desde checkpoint sin duplicar filas, takeover de workers caídos al vencer el lease, y detección de fuente modificada (ETag/size).</li>
       <li><strong>Observabilidad integrada</strong>: OpenTelemetry en los 3 servicios, <code>/metrics</code> en formato Prometheus y dashboard de Grafana aprovisionado, sin setup manual.</li>
       <li><strong>Interfaz de administración incluida</strong>: web React + BFF (<code>npm run setup</code> levanta todo el entorno en un comando) para cargar el archivo con progreso en 2 fases, seguir el import en vivo, consultar deudores/entidades y gestionar los emails de notificación. Los secretos viven solo en el BFF.</li>
-      <li><strong>Performance medida</strong> con el dataset real: end-to-end ≈ 486 s (~8 min), con ~78.400 líneas válidas/s en la fase de staging.</li>
-      <li><strong>CI en GitHub Actions</strong>: build sin warnings + 274 tests (217 .NET entre unitarios y de integración con Testcontainers, más 57 del frontend con typecheck) en cada push y PR.</li>
+      <li><strong>Performance medida</strong> con el dataset real: end-to-end ≈ 689 s (~11,5 min) tras el tuning de bulk-load de ADR-011 (con defaults de Postgres: ~974 s / ~16 min, −29 %), con ~136.700 líneas válidas/s en la fase de staging.</li>
+      <li><strong>CI en GitHub Actions</strong>: build sin warnings + 278 tests (217 .NET entre unitarios y de integración con Testcontainers, más 61 del frontend con typecheck) en cada push y PR.</li>
     </ul>
     <div class="stats">
       <div class="stat"><b>34.385.567</b><span>líneas del dataset de muestra (~5,9 GB)</span></div>
-      <div class="stat"><b>~78.400/s</b><span>líneas válidas COPY-eadas a staging</span></div>
-      <div class="stat"><b>~486 s</b><span>import end-to-end (~8 min)</span></div>
+      <div class="stat"><b>~136.700/s</b><span>líneas válidas COPY-eadas a staging</span></div>
+      <div class="stat"><b>~689 s</b><span>import end-to-end (~11,5 min, post-tuning ADR-011)</span></div>
       <div class="stat"><b>10</b><span>piezas que levanta el setup (8 contenedores + BFF + web)</span></div>
       <div class="stat"><b>0</b><span>locks distribuidos · usos de SERIALIZABLE o LOCK TABLE</span></div>
     </div>
@@ -297,6 +297,18 @@ footer{margin-top:44px;color:var(--muted);font-size:.82rem;text-align:center}
       <span class="lbl">Consecuencias</span>
       <p>Sin infraestructura extra de idempotencia en el notifier y semántica honesta en código y docs. Riesgo residual asumido: si el receptor ignora el header, las re-entregas notifican dos veces; aceptable para notificaciones de fin de import.</p>
       <p class="more"><a href="adr/ADR-010-notifier-at-least-once-webhook.md">Ver ADR completo →</a></p>
+    </div>
+    <div class="adr" style="grid-column:1/-1">
+      <span class="adr-id">ADR-011</span>
+      <h4>Tuning de configuración sin paralelizar el pipeline de import</h4>
+      <span class="tag ok">Aceptado</span>
+      <span class="lbl">Contexto</span>
+      <p>El import del archivo mensual (5,9 GB, 34,4 M de líneas → 19,9 M de deudores agregados) tardaba ~16 min: el GROUP BY corría con <code>work_mem</code> de 4 MB (spill a disco de una tabla hash de ~20 M de grupos), los <code>CREATE INDEX</code> con 64 MB (sort externo) y el bulk generaba checkpoints cada ~1 GB de WAL — todo defaults de Postgres.</p>
+      <span class="lbl">Decisión</span>
+      <p>Tratarlo como problema de <strong>configuración, no de arquitectura</strong>: compose con <code>shared_buffers=512MB</code>, <code>max_wal_size=4GB</code>, <code>checkpoint_timeout=15min</code> y <code>max_parallel_maintenance_workers=4</code>, más <code>SET</code> sessionales en el repositorio (<code>work_mem='2GB'</code> en la agregación, <code>maintenance_work_mem='512MB'</code> en índices — session-scoped, mueren con la conexión al volver al pool). Resultado medido: <strong>16 m 14 s → 11 m 29 s (−29 %)</strong>.</p>
+      <span class="lbl">Consecuencias</span>
+      <p>Mejora inmediata sin tocar dominio, protocolos ni contratos, y reversible. Se documentan y rechazan <em>por ahora</em> las alternativas de escala como sobreingeniería para una cadencia mensual — staging paralelo, pre-agregación sharded por <code>hash(cuit)</code>, <code>deudor_agg</code> particionada por <code>import_id</code>, warehouse/Citus/Spark y eliminar la doble copia del BFF — cada una con ganancia estimada, costo real y <strong>gatillos para revisitar</strong> (cadencia diaria, SLA de ventana, crecimiento superlineal del archivo).</p>
+      <p class="more"><a href="adr/ADR-011-tuning-sin-paralelizar-import.md">Ver ADR completo →</a></p>
     </div>
   </div>
   <p class="note">El repositorio además documenta las decisiones estructurales previas en <code>docs/adr/</code>: ADR-001 (PostgreSQL como persistencia), ADR-002 (ELT: staging then SQL), ADR-003 (situación de máximo literal) y ADR-004 (base compartida entre servicios).</p>
@@ -660,7 +672,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
     <div class="pre"><pre class="tree"><code>Wayni Challenge/
 ├── Bcra.Microservices.sln
 ├── docker-compose.yml          <span class="c"># postgres, localstack, 3 apis, mailpit, prometheus, grafana</span>
-├── .github/workflows/ci.yml    <span class="c"># CI: build + 217 tests .NET + 57 del frontend (2 jobs)</span>
+├── .github/workflows/ci.yml    <span class="c"># CI: build + 217 tests .NET + 61 del frontend (2 jobs)</span>
 ├── global.json                 <span class="c"># fija el SDK .NET 10</span>
 ├── .env.example                <span class="c"># configuración del entorno local</span>
 ├── src/
@@ -720,7 +732,7 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
         <tr><td><code>PROMETHEUS_PORT</code> / <code>GRAFANA_PORT</code></td><td><code>9090</code> / <code>3000</code></td><td>Puertos de Prometheus y Grafana (datasource + dashboard aprovisionados).</td></tr>
         <tr><td><code>GRAFANA_ADMIN_USER</code> / <code>GRAFANA_ADMIN_PASSWORD</code></td><td><code>admin</code> / <code>admin</code></td><td>Login de admin; también hay viewer anónimo sin login.</td></tr>
         <tr><td colspan="3" style="background:#f2f5fa;font-weight:700;color:#57627a">Tuning del import <span style="font-weight:400">(defaults medidos con el dataset de muestra; ver README "Performance")</span></td></tr>
-        <tr><td><code>INGESTION_BATCH_SIZE</code></td><td><code>200000</code></td><td>Líneas por lote de COPY (97 lotes de 200k: tasa estable, sin presión de memoria).</td></tr>
+        <tr><td><code>INGESTION_BATCH_SIZE</code></td><td><code>200000</code></td><td>Líneas por lote de COPY (172 lotes de 200k: tasa estable, sin presión de memoria).</td></tr>
         <tr><td><code>DATABASE_MAXPOOLSIZE</code></td><td><code>50</code></td><td>MaxPoolSize del connection string de ingestion.</td></tr>
         <tr><td><code>DATABASE_MAXAUTOPREPARE</code></td><td><code>16</code></td><td>Max Auto Prepare de Npgsql en el connection string de ingestion.</td></tr>
         <tr><td><code>QUERY_TOP_MAX</code></td><td><code>100</code></td><td>Tope máximo de resultados del query-service.</td></tr>
@@ -737,20 +749,22 @@ curl http://localhost:9090/api/v1/targets                       <span class="c">
       </tbody>
     </table>
 
-    <h3>Performance medida <span style="font-weight:400;color:var(--muted);font-size:.82rem">(dataset real de muestra <code>samples/deudores.txt</code>: ~5,9 GB, 34.385.567 líneas — 19.247.633 válidas + 15.137.934 rechazadas por el parser; medición previa al fix del acote <code>smallint</code> del código de entidad, que descartaba 15,1 M de líneas de entidades ≥ 32768 (p. ej. Naranja 45030, Toyota 44099); tras el fix quedan ~285 rechazos legítimos, los registros de control con marcador 98/99 — sobre Docker Desktop, Postgres 16.4 compartiendo CPU)</span></h3>
+    <h3>Performance medida <span style="font-weight:400;color:var(--muted);font-size:.82rem">(dataset real de muestra <code>samples/deudores.txt</code>: ~5,9 GB, 34.385.567 líneas — 34.385.282 válidas procesadas + ~285 registros de control con marcador 98/99 descartados, con el parser post-fix del acote <code>smallint</code> — sobre Docker Desktop, VM de 15,5 GB compartida, Postgres 16.4, tras el tuning de bulk-load del <a href="adr/ADR-011-tuning-sin-paralelizar-import.md">ADR-011</a>)</span></h3>
     <table>
       <thead><tr><th>Fase</th><th>Duración</th><th>Nota</th></tr></thead>
       <tbody>
-        <tr><td>Staging (COPY por lotes + checkpoint)</td><td>245,5 s</td><td><strong>~78.400 líneas válidas/s</strong> (~140.000 líneas totales/s), 97 lotes</td></tr>
-        <tr><td>Agregación SQL (GROUP BY)</td><td>132,5 s</td><td>CPU-bound en Postgres</td></tr>
-        <tr><td>Índices pre-swap</td><td>97,5 s</td><td><code>CREATE INDEX</code> sobre staging + agregados parciales</td></tr>
-        <tr><td>Swap de <code>active_import</code></td><td>0,05 s</td><td>Transacción corta con <code>FOR UPDATE</code></td></tr>
-        <tr><td><strong>End-to-end</strong></td><td><strong>~486 s (~8 min)</strong></td><td>Desde claim hasta Completed</td></tr>
+        <tr><td>Staging (COPY por lotes + checkpoint)</td><td>251,5 s</td><td><strong>~136.700 líneas válidas/s</strong>, 172 lotes de 200k</td></tr>
+        <tr><td>Agregación SQL (GROUP BY de ~20M de grupos)</td><td>298,9 s</td><td><code>work_mem</code> sessional de 2 GB (ADR-011); el resto es piso de I/O</td></tr>
+        <tr><td>Índices pre-swap</td><td>137,4 s</td><td><code>maintenance_work_mem</code> 512 MB + index build paralelo (ADR-011)</td></tr>
+        <tr><td>Swap de <code>active_import</code></td><td>0,03 s</td><td>Transacción corta con <code>FOR UPDATE</code></td></tr>
+        <tr><td><strong>End-to-end</strong></td><td><strong>~689 s (~11,5 min)</strong></td><td>Con defaults de Postgres: ~974 s (~16 min) — <strong>−29 %</strong> por el tuning</td></tr>
       </tbody>
     </table>
-    <p style="font-size:.88rem;color:#43506a"><strong>Tuning aplicado, justificado por la medición:</strong></p>
+    <p style="font-size:.88rem;color:#43506a"><strong>Tuning aplicado, justificado por la medición (<a href="adr/ADR-011-tuning-sin-paralelizar-import.md">ADR-011</a>):</strong></p>
     <ul class="tight" style="font-size:.88rem;color:#43506a">
-      <li><code>CommandTimeout=0</code> en los comandos pesados (<code>AggregateImportAsync</code>, <code>CreateImportIndexesAsync</code>, <code>DropImportStorageAsync</code>): el default de Npgsql (30 s) es menor que la agregación medida (132 s) — sin esto, el import del dataset real entraba en loop de takeover (timeout → <code>DbException</code> → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.</li>
+      <li><code>CommandTimeout=0</code> en los comandos pesados (<code>AggregateImportAsync</code>, <code>CreateImportIndexesAsync</code>, <code>DropImportStorageAsync</code>): el default de Npgsql (30 s) es menor que las fases medidas — sin esto, el import del dataset real entraba en loop de takeover (timeout → <code>DbException</code> → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.</li>
+      <li>Postgres fuera de defaults (compose): <code>shared_buffers=512MB</code>, <code>max_wal_size=4GB</code>, <code>checkpoint_timeout=15min</code>, <code>max_parallel_maintenance_workers=4</code> — con defaults, checkpoints cada ~1 GB de WAL en un bulk que genera varios GB, e index build sin memoria ni paralelismo.</li>
+      <li><code>SET</code> sessionales en el repositorio: <code>work_mem='2GB'</code> en la agregación (la tabla hash de ~20M de grupos necesita ~2-3 GB; con 4 MB de default spillea toda a disco) y <code>maintenance_work_mem='512MB'</code> en la creación de índices. Session-scoped: mueren con la conexión al volver al pool.</li>
       <li>Batch size 200k y pool 50 se mantienen: la medición no muestra cuello de botella del lado .NET (el limiter es Postgres en la agregación).</li>
     </ul>
   </div>

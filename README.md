@@ -82,21 +82,23 @@ El dashboard de Grafana muestra: import en curso (Loading/Aggregating), líneas/
 
 ## Performance
 
-Medición con el dataset real de muestra (`samples/deudores.txt`, ~5.9 GB, 34,385,567 líneas: 19,247,633 válidas + 15,137,934 rechazadas por el parser — medición previa al fix del acote `smallint` del código de entidad, que descartaba como inválidas 15,1 M de líneas de entidades ≥ 32768, p. ej. Naranja 45030 o Toyota 44099; tras el fix quedan ~285 rechazos legítimos, los registros de control con marcador 98/99), sobre Docker Desktop (Postgres 16.4 compartiendo CPU con otros stacks):
+Medición con el dataset real de muestra (`samples/deudores.txt`, ~5.9 GB, 34,385,567 líneas — con el parser post-fix del acote `smallint`: 34,385,282 líneas válidas procesadas y ~285 registros de control con marcador 98/99 descartados; ver [ADR-011](docs/adr/ADR-011-tuning-sin-paralelizar-import.md)), sobre Docker Desktop (VM de 15.5 GB compartida con otros stacks, Postgres 16.4) **después del tuning de bulk-load**:
 
 | Fase | Duración | Nota |
 |---|---|---|
-| Staging (COPY por lotes + checkpoint) | 245.5 s | **~78,400 líneas válidas/s** (~140,000 líneas totales/s), 97 lotes |
-| Agregación SQL (GROUP BY) | 132.5 s | CPU-bound en Postgres |
-| Índices pre-swap | 97.5 s | `CREATE INDEX` sobre staging + agregados parciales |
-| Swap de `active_import` | 0.05 s | Transacción corta con `FOR UPDATE` |
-| **End-to-end** | **~486 s (~8 min)** | Desde claim hasta Completed |
+| Staging (COPY por lotes + checkpoint) | 251.5 s | **~136,700 líneas válidas/s**, 172 lotes de 200k |
+| Agregación SQL (GROUP BY de ~20M de grupos) | 298.9 s | `work_mem` sessional de 2 GB (ADR-011); el resto es piso de I/O |
+| Índices pre-swap | 137.4 s | `maintenance_work_mem` 512 MB + index build paralelo (ADR-011) |
+| Swap de `active_import` | 0.03 s | Transacción corta con `FOR UPDATE` |
+| **End-to-end** | **~689 s (~11.5 min)** | Con defaults de Postgres: ~974 s (~16 min) — **−29 %** por el tuning |
 
-Config usada (defaults en `.env.example` / compose): `Ingestion__BatchSize=200000` (97 lotes de 200k: tasa estable, sin presión de memoria), `MaxPoolSize=50`, `Max Auto Prepare=16` en el connection string de ingestion.
+Config usada (defaults en `.env.example` / compose): `Ingestion__BatchSize=200000` (172 lotes de 200k: tasa estable, sin presión de memoria), `MaxPoolSize=50`, `Max Auto Prepare=16` en el connection string de ingestion.
 
-Tuning aplicado justificado por la medición:
+Tuning aplicado justificado por la medición ([ADR-011](docs/adr/ADR-011-tuning-sin-paralelizar-import.md)):
 
-- `CommandTimeout=0` en los comandos pesados (`AggregateImportAsync`, `CreateImportIndexesAsync`, `DropImportStorageAsync`): el default de Npgsql (30 s) es menor que la agregación medida (132 s) — sin esto, el import del dataset real entraba en loop de takeover (timeout → `DbException` → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.
+- `CommandTimeout=0` en los comandos pesados (`AggregateImportAsync`, `CreateImportIndexesAsync`, `DropImportStorageAsync`): el default de Npgsql (30 s) es menor que las fases medidas — sin esto, el import del dataset real entraba en loop de takeover (timeout → `DbException` → lease vencido → re-agregación idempotente que volvía a expirar). La reanudación por checkpoint ya cubre fallos reales de conexión.
+- Postgres fuera de defaults (compose): `shared_buffers=512MB`, `max_wal_size=4GB`, `checkpoint_timeout=15min`, `max_parallel_maintenance_workers=4` — con defaults, checkpoints cada ~1GB de WAL en un bulk que genera varios GB, e index build sin memoria ni paralelismo.
+- `SET` sessionales en el repositorio: `work_mem='2GB'` en la agregación (la tabla hash de ~20M de grupos necesita ~2-3 GB; con 4 MB de default spillea toda a disco) y `maintenance_work_mem='512MB'` en la creación de índices. Session-scoped: mueren con la conexión al volver al pool.
 - Batch size 200k y pool 50 se mantienen: la medición no muestra cuello de botella del lado .NET (el limiter es Postgres en la agregación).
 
 ## Datos de muestra
